@@ -1,5 +1,5 @@
 """
-Local SQLite persistence for RadHarness.
+Local SQLite persistence for Radiology AI Assistant.
 
 All state lives in a single local database file (config.DB_PATH). Nothing is
 sent anywhere. This module owns the schema and a few shared helpers; routers

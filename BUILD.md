@@ -1,6 +1,6 @@
-# RadHarness Build Specification
+# Radiology AI Assistant Build Specification
 
-The picked and tested stack for running RadHarness fully locally. Prepared by
+The picked and tested stack for running Radiology AI Assistant fully locally. Prepared by
 Rbuild.ai. This document is internal (closed IP) and stays local.
 
 ## 1. Local model, picked and tested
@@ -22,7 +22,7 @@ Recommendation from the model research and the on-device benchmark.
   deployment still requires validation and local regulatory approval.
 
 ### Embeddings for RAG
-- **nomic-embed-text**. If it is not installed, RadHarness falls back to a local
+- **nomic-embed-text**. If it is not installed, Radiology AI Assistant falls back to a local
   deterministic embedding, so knowledge search always works offline.
 
 ### Memory tier mapping (Q4 quantization)
@@ -42,7 +42,7 @@ Recommendation from the model research and the on-device benchmark.
 | Report drafting | qwen2.5:14b | 12.9 | 15.1 s | 5 |
 
 Finding: gpt-oss:20b runs 100% on the GPU at a clinically usable speed. Triage
-classification undercalled one case, which is why RadHarness wraps triage in
+classification undercalled one case, which is why Radiology AI Assistant wraps triage in
 deterministic rules plus mandatory radiologist verification. Use qwen3 or a
 larger model on a Mac Studio for higher-stakes reasoning.
 
@@ -72,8 +72,8 @@ options, so plan around 96GB to 128GB for new purchases.
 #    or: ./scripts/setup-models.sh --tier 64
 
 # 3. Point the app at your chosen model (optional, defaults to gpt-oss:20b)
-export RADHARNESS_CHAT_MODEL=qwen3:32b
-export RADHARNESS_EMBED_MODEL=nomic-embed-text
+export RADIOLOGY_AI_CHAT_MODEL=qwen3:32b
+export RADIOLOGY_AI_EMBED_MODEL=nomic-embed-text
 
 # 4. Run
 ./run.sh                             # http://127.0.0.1:8000

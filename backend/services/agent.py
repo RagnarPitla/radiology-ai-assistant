@@ -1,5 +1,5 @@
 """
-Agentic assistant for RadHarness.
+Agentic assistant for Radiology AI Assistant.
 
 A local tool-using agent. It runs a small reason-act loop against the LOCAL
 model and can call tools that search the worklist, search the local knowledge
@@ -21,7 +21,7 @@ from backend.schemas import ChatRequest, ChatResponse, ImpressionRequest, ToolCa
 MAX_STEPS = 4
 
 _SYSTEM = (
-    "You are RadHarness Assistant, a local AI aide for a radiologist. You run "
+    "You are Radiology AI Assistant Assistant, a local AI aide for a radiologist. You run "
     "fully on the radiologist's machine and must keep all patient data local. "
     "Be precise, concise, and clinical. Use the available tools when they help: "
     "search the worklist, search the local knowledge base for guidelines, run "

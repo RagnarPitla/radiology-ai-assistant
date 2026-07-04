@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>RadHarness: Local AI for Radiology</title>
+<title>Radiology AI Assistant: Local AI for Radiology</title>
 <script>
   (() => {
     const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -159,6 +159,15 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
 .note { margin-top: 18px; padding: 12px 16px; border-left: 3px solid var(--cp-accent); background: var(--cp-accent-soft); border-radius: 8px; font-size: 14px; color: var(--cp-text-muted); }
 .disclaimer-box { border: 1px solid var(--cp-warning); background: rgba(245,158,11,.08); border-radius: 12px; padding: 18px 20px; font-size: 15px; line-height: 1.5; }
 
+/* Workflow */
+.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px; }
+@media (max-width: 900px) { .flow { grid-template-columns: 1fr; } }
+.step { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 14px; padding: 16px 18px; box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
+.step .num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--cp-accent); color: var(--cp-accent-fg); font-weight: 800; font-size: 14px; margin-bottom: 8px; }
+.step h3 { font-size: 16px; margin-bottom: 4px; }
+.step p { color: var(--cp-text-muted); font-size: 13.5px; line-height: 1.4; }
+.step .feat { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--cp-accent); }
+
 /* Nav */
 .nav { position: fixed; bottom: 18px; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 16px; }
 .nav button {
@@ -176,7 +185,7 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
 </head>
 <body>
 <div class="topbar">
-  <div class="brand"><span class="dot"></span> RadHarness <small>by Rbuild.ai</small></div>
+  <div class="brand"><span class="dot"></span> Radiology AI Assistant <small>by Rbuild.ai</small></div>
   <div class="top-right">
     <span class="pill"><span class="g"></span> 100% ON DEVICE</span>
     <span id="counter">1 / 12</span>
@@ -189,7 +198,7 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
   <!-- 1. Title -->
   <section class="slide active">
     <div class="kicker">Rbuild.ai &nbsp;|&nbsp; Private, on-premise AI for imaging</div>
-    <h1>RadHarness: enterprise-grade AI that never leaves the reading room.</h1>
+    <h1>Radiology AI Assistant: enterprise-grade AI that never leaves the reading room.</h1>
     <p class="lead">A complete radiology AI assistant that runs entirely on a single Mac, using open local models. No cloud, no per-study fees, no patient data leaving the building.</p>
     <div class="badge-row">
       <span class="badge">Worklist and DICOM viewer</span>
@@ -200,6 +209,22 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
     </div>
     <p class="muted" style="margin-top:18px">An Rbuild.ai build. Contact <strong class="accent">ragnar@rbuild.ai</strong></p>
     <div class="note">Assistant and productivity tool, not a diagnostic medical device. Every output is verified by a qualified radiologist.</div>
+  </section>
+
+  <!-- 2. Workflow and features -->
+  <section class="slide" id="slide-workflow">
+    <div class="kicker">What it does for your day</div>
+    <h2>Built around the radiologist's workflow.</h2>
+    <p class="lead">Every step of the read, from the moment a study arrives to the signed report, supported by local AI. Nothing leaves the device.</p>
+    <div class="flow" style="margin-top:22px">
+      <div class="step"><span class="num">1</span><h3>Studies arrive</h3><p>DICOM ingest with automatic de-identification builds a clean, prioritized worklist.</p><span class="feat">Worklist and de-identification</span></div>
+      <div class="step"><span class="num">2</span><h3>Urgent first</h3><p>Critical-findings triage flags actionable studies and raises them to STAT.</p><span class="feat">Critical-findings triage</span></div>
+      <div class="step"><span class="num">3</span><h3>Read the images</h3><p>Scroll DICOM frames in the browser with study metadata at hand.</p><span class="feat">Built-in DICOM viewer</span></div>
+      <div class="step"><span class="num">4</span><h3>Dictate findings</h3><p>Drafts a structured report: Technique, Comparison, Findings, Impression.</p><span class="feat">Structured reporting</span></div>
+      <div class="step"><span class="num">5</span><h3>Check guidelines</h3><p>Ask your own protocols and appropriateness criteria, with cited answers.</p><span class="feat">Local knowledge base (RAG)</span></div>
+      <div class="step"><span class="num">6</span><h3>Verify and sign</h3><p>The radiologist reviews and approves every AI output. Always.</p><span class="feat">Human in the loop</span></div>
+    </div>
+    <div class="note">The result: less clicking, faster turnaround, and a report drafted for you, all while patient data stays in the building.</div>
   </section>
 
   <!-- 2. Problem -->
@@ -220,7 +245,7 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
     <div class="two">
       <div>
         <h2>One local appliance. The whole AI workflow.</h2>
-        <p class="lead">RadHarness packages a modern radiology AI stack into software that runs on a single Mac using open models. It is offline by architecture: the app refuses any non-local model endpoint.</p>
+        <p class="lead">Radiology AI Assistant packages a modern radiology AI stack into software that runs on a single Mac using open models. It is offline by architecture: the app refuses any non-local model endpoint.</p>
         <ul class="clean" style="margin-top:20px">
           <li>All inference runs on the device, on your data, under your roof.</li>
           <li>Open-source models mean zero license and zero per-use fees.</li>
@@ -326,7 +351,7 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
         <tr><td>RAG answer</td><td>gpt-oss:20b</td><td id="b-gen-c">41.0</td><td id="b-lat-c">3.6 s</td><td id="b-q-c">5</td></tr>
       </table>
     </div>
-    <div class="note" id="bench-note">Strong on report drafting and grounded answering. Triage scored lower because the model undercalled one case, which is exactly why RadHarness wraps triage in deterministic rules plus mandatory radiologist verification. Warm-run figures, GPU (Metal).</div>
+    <div class="note" id="bench-note">Strong on report drafting and grounded answering. Triage scored lower because the model undercalled one case, which is exactly why Radiology AI Assistant wraps triage in deterministic rules plus mandatory radiologist verification. Warm-run figures, GPU (Metal).</div>
   </section>
 
   <!-- 9. Hardware (DATA) -->
@@ -350,7 +375,7 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
         <h3 class="muted" style="margin-bottom:14px">3-year total cost (illustrative)</h3>
         <div class="bars">
           <div class="bar-row"><span>Cloud / SaaS AI</span><div class="bar-track"><div class="bar-fill cloud" style="width:100%">$80,000</div></div><span></span></div>
-          <div class="bar-row"><span>RadHarness local</span><div class="bar-track"><div class="bar-fill local" style="width:16%"></div></div><span style="font-weight:800;color:var(--cp-accent)">$12,200</span></div>
+          <div class="bar-row"><span>Radiology AI Assistant local</span><div class="bar-track"><div class="bar-fill local" style="width:16%"></div></div><span style="font-weight:800;color:var(--cp-accent)">$12,200</span></div>
         </div>
         <div class="note" id="roi-note">Base scenario: 8,000 studies per year, single-radiologist practice. 3-year cost about $12,200 local vs about $80,000 mid-range cloud or SaaS, plus roughly $28,700 per year in radiologist time saved. Estimates with assumptions and sources in the ROI report.</div>
       </div>
@@ -377,14 +402,14 @@ table.t .hl { color: var(--cp-accent); font-weight: 700; }
   <section class="slide">
     <div class="kicker">Take it for a read</div>
     <h1>Own your AI. Keep your data. Cut the bill.</h1>
-    <p class="lead">RadHarness is built and running today. The next step is choosing the model tier and the Mac Studio that fit your volume, then piloting it on a live worklist.</p>
+    <p class="lead">Radiology AI Assistant is built and running today. The next step is choosing the model tier and the Mac Studio that fit your volume, then piloting it on a live worklist.</p>
     <div class="badge-row">
       <span class="badge">Run: <span class="mono">./run.sh</span></span>
       <span class="badge">Open: <span class="mono">127.0.0.1:8000</span></span>
       <span class="badge">Contact: <span class="mono">ragnar@rbuild.ai</span></span>
     </div>
     <div class="disclaimer-box" style="margin-top:26px">
-      <strong>Medical disclaimer.</strong> RadHarness is a research and productivity assistant, not a medical device. It is not FDA or CE cleared and must not be used for primary diagnosis or autonomous clinical decisions. All AI output must be reviewed and verified by a qualified radiologist.
+      <strong>Medical disclaimer.</strong> Radiology AI Assistant is a research and productivity assistant, not a medical device. It is not FDA or CE cleared and must not be used for primary diagnosis or autonomous clinical decisions. All AI output must be reviewed and verified by a qualified radiologist.
     </div>
   </section>
 

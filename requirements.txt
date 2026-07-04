@@ -1,4 +1,4 @@
-# RadHarness backend dependencies (all local, no cloud SDKs)
+# Radiology AI Assistant backend dependencies (all local, no cloud SDKs)
 fastapi
 uvicorn[standard]
 pydantic

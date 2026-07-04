@@ -1,4 +1,4 @@
-# RadHarness by Rbuild.ai
+# Radiology AI Assistant by Rbuild.ai
 
 > An **Rbuild.ai** build. We design and ship private, on-device AI systems.
 > Contact: **ragnar@rbuild.ai**
@@ -7,17 +7,17 @@
 machine (Mac or PC) using local language models. No patient data ever leaves the
 device. No cloud. No telemetry.
 
-RadHarness reimagines the *ideas* behind cloud radiology platforms as a private,
+Radiology AI Assistant reimagines the *ideas* behind cloud radiology platforms as a private,
 on-device assistant:
 
-| Concept from | RadHarness (local) capability |
+| Concept from | Radiology AI Assistant (local) capability |
 | --- | --- |
 | RapidAI (triage) | On-device critical-findings triage that flags STAT studies |
 | Siemens Intelligent Imaging (workflow) | Agentic worklist prioritization and workflow help |
 | RamSoft (PACS/RIS) | Local DICOM worklist, basic viewer, and structured reporting |
 
 > ## Important medical disclaimer
-> RadHarness is a **research and productivity assistant, NOT a medical device.**
+> Radiology AI Assistant is a **research and productivity assistant, NOT a medical device.**
 > It is **not FDA or CE cleared**. It must **not** be used for primary diagnosis
 > or autonomous clinical decisions. Every AI-generated output must be reviewed
 > and verified by a qualified radiologist. You are responsible for compliance
@@ -51,10 +51,10 @@ on-device assistant:
     ollama pull gpt-oss:20b          # reasoning model (default)
     ollama pull nomic-embed-text     # embeddings for RAG (optional but better)
     ```
-  - **Foundry Local** (Microsoft). Set `RADHARNESS_LLM_RUNTIME=foundry` and
-    `RADHARNESS_FOUNDRY_BASE_URL` to its OpenAI-compatible endpoint.
+  - **Foundry Local** (Microsoft). Set `RADIOLOGY_AI_LLM_RUNTIME=foundry` and
+    `RADIOLOGY_AI_FOUNDRY_BASE_URL` to its OpenAI-compatible endpoint.
 
-If no embedding model is present, RadHarness falls back to a local deterministic
+If no embedding model is present, Radiology AI Assistant falls back to a local deterministic
 embedding so knowledge search still works fully offline.
 
 ## Run
@@ -71,12 +71,12 @@ Then open http://127.0.0.1:8000
 ## Configuration (environment variables)
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `RADHARNESS_LLM_RUNTIME` | `ollama` | `ollama` or `foundry` |
-| `RADHARNESS_CHAT_MODEL` | `gpt-oss:20b` | reasoning model |
-| `RADHARNESS_FAST_MODEL` | `qwen2.5-coder:1.5b` | small/fast model |
-| `RADHARNESS_EMBED_MODEL` | `nomic-embed-text` | embeddings for RAG |
-| `RADHARNESS_OFFLINE_MODE` | `1` | refuse non-local model endpoints |
-| `RADHARNESS_HOST` / `RADHARNESS_PORT` | `127.0.0.1` / `8000` | server bind |
+| `RADIOLOGY_AI_LLM_RUNTIME` | `ollama` | `ollama` or `foundry` |
+| `RADIOLOGY_AI_CHAT_MODEL` | `gpt-oss:20b` | reasoning model |
+| `RADIOLOGY_AI_FAST_MODEL` | `qwen2.5-coder:1.5b` | small/fast model |
+| `RADIOLOGY_AI_EMBED_MODEL` | `nomic-embed-text` | embeddings for RAG |
+| `RADIOLOGY_AI_OFFLINE_MODE` | `1` | refuse non-local model endpoints |
+| `RADIOLOGY_AI_HOST` / `RADIOLOGY_AI_PORT` | `127.0.0.1` / `8000` | server bind |
 
 ## Architecture
 ```

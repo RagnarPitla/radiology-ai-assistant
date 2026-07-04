@@ -1,5 +1,5 @@
 """
-Report drafting service for RadHarness.
+Report drafting service for Radiology AI Assistant.
 
 Turns a radiologist's raw dictation / findings into a structured report
 (Technique, Comparison, Findings, Impression) using the LOCAL model, and

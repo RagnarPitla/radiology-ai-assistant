@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RadHarness launcher (macOS / Linux). Runs everything locally.
+# Radiology AI Assistant launcher (macOS / Linux). Runs everything locally.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,7 +21,7 @@ if ! curl -s http://localhost:11434/v1/models >/dev/null 2>&1; then
   echo "Start it with 'ollama serve' and pull a model, e.g. 'ollama pull gpt-oss:20b'."
 fi
 
-HOST="${RADHARNESS_HOST:-127.0.0.1}"
-PORT="${RADHARNESS_PORT:-8000}"
-echo "RadHarness running at http://$HOST:$PORT  (local only)"
+HOST="${RADIOLOGY_AI_HOST:-127.0.0.1}"
+PORT="${RADIOLOGY_AI_PORT:-8000}"
+echo "Radiology AI Assistant running at http://$HOST:$PORT  (local only)"
 exec python -m uvicorn backend.app:app --host "$HOST" --port "$PORT"

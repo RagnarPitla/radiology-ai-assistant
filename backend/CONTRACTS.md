@@ -1,6 +1,6 @@
-# RadHarness: Build Contracts (read before editing)
+# Radiology AI Assistant: Build Contracts (read before editing)
 
-This file is the single source of truth for module boundaries. RadHarness is a
+This file is the single source of truth for module boundaries. Radiology AI Assistant is a
 **local-first AI harness for radiologists**. Everything runs on the machine; no
 patient data leaves the device. Inspired conceptually by RapidAI (triage),
 Siemens Intelligent Imaging (workflow), and RamSoft (PACS/reporting).

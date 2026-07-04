@@ -1,4 +1,4 @@
-"""DICOM ingest, worklist, and frame helpers for RadHarness."""
+"""DICOM ingest, worklist, and frame helpers for Radiology AI Assistant."""
 from __future__ import annotations
 
 import hashlib

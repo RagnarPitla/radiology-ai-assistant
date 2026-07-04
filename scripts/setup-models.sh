@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RadHarness model setup helper.
+# Radiology AI Assistant model setup helper.
 # Pulls recommended LOCAL models for radiology via Ollama, sized to the machine's
 # unified memory. Everything stays on device. No cloud.
 #
@@ -78,7 +78,7 @@ esac
 
 echo
 echo "Done. Suggested default reasoning model for this tier: ${DEFAULT}"
-echo "Point RadHarness at it by setting the environment variables:"
-echo "  export RADHARNESS_CHAT_MODEL=${DEFAULT}"
-echo "  export RADHARNESS_EMBED_MODEL=nomic-embed-text"
+echo "Point Radiology AI Assistant at it by setting the environment variables:"
+echo "  export RADIOLOGY_AI_CHAT_MODEL=${DEFAULT}"
+echo "  export RADIOLOGY_AI_EMBED_MODEL=nomic-embed-text"
 echo "Then start the app with ./run.sh"

@@ -1,5 +1,5 @@
 """
-Local LLM client for RadHarness.
+Local LLM client for Radiology AI Assistant.
 
 Talks to a local OpenAI-compatible endpoint (Ollama or Foundry Local). Provides
 chat (with optional tool calling), embeddings (with an offline fallback), and

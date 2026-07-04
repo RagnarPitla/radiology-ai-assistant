@@ -1,4 +1,4 @@
-"""Knowledge base router for local RadHarness RAG."""
+"""Knowledge base router for local Radiology AI Assistant RAG."""
 from __future__ import annotations
 
 import shutil

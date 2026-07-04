@@ -1,5 +1,5 @@
 """
-Pydantic schemas shared across RadHarness routers.
+Pydantic schemas shared across Radiology AI Assistant routers.
 
 These are the API contracts. Routers and services must conform to these
 shapes so the frontend and the agent tool layer stay stable.

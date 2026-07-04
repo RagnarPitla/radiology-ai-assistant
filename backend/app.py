@@ -1,5 +1,5 @@
 """
-RadHarness FastAPI application.
+Radiology AI Assistant FastAPI application.
 
 Local-first AI harness for radiologists. Serves the API and the static SPA.
 Binds to loopback by default. No cloud calls.

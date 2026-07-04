@@ -1,5 +1,5 @@
 """
-Local RAG service for RadHarness knowledge search.
+Local RAG service for Radiology AI Assistant knowledge search.
 
 Embeddings use backend.llm.client.embed. If config.EMBED_MODEL is not installed,
 the client uses a lower quality local fallback embedding that remains fully

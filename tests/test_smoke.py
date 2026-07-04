@@ -1,5 +1,5 @@
 """
-RadHarness smoke tests.
+Radiology AI Assistant smoke tests.
 
 Runs without any network beyond the local model runtime. Tests that do not need
 a live model check structure and the privacy guard. Model-dependent checks are
@@ -72,7 +72,7 @@ def test_knowledge_search_shape():
 def test_frontend_served():
     r = TC.get("/")
     assert r.status_code == 200
-    assert "RadHarness" in r.text
+    assert "Radiology AI Assistant" in r.text
 
 
 def _run_all():
