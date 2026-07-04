@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RadHarness: Local AI for Radiology</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+code, .mono { font-family: Consolas, "Courier New", Courier, monospace; }
+
+/* Top bar */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px; background: var(--cp-panel-strong);
+  border-bottom: 1px solid var(--cp-border); backdrop-filter: blur(8px);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .2px; }
+.brand .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--cp-accent); box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.brand small { font-weight: 500; color: var(--cp-text-muted); }
+.top-right { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--cp-text-muted); }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px;
+  background: var(--cp-accent-soft); color: var(--cp-accent); font-weight: 600; font-size: 12px;
+  border: 1px solid var(--cp-border);
+}
+.pill .g { width: 8px; height: 8px; border-radius: 50%; background: var(--cp-success); }
+.progress { position: fixed; top: 52px; left: 0; height: 3px; background: var(--cp-accent); z-index: 30; transition: width .3s ease; }
+
+/* Slides */
+.deck { position: absolute; inset: 52px 0 0 0; }
+.slide {
+  position: absolute; inset: 0; display: none;
+  padding: 44px clamp(24px, 7vw, 110px); overflow-y: auto;
+  animation: fade .35s ease;
+}
+.slide.active { display: flex; flex-direction: column; justify-content: center; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.kicker { color: var(--cp-accent); font-weight: 700; text-transform: uppercase; letter-spacing: 2px; font-size: 13px; margin-bottom: 14px; }
+h1 { font-size: clamp(30px, 4.6vw, 60px); line-height: 1.05; letter-spacing: -.5px; margin-bottom: 18px; }
+h2 { font-size: clamp(24px, 3.2vw, 40px); line-height: 1.1; margin-bottom: 20px; letter-spacing: -.3px; }
+h3 { font-size: 19px; margin-bottom: 8px; }
+p.lead { font-size: clamp(16px, 1.7vw, 21px); color: var(--cp-text-muted); max-width: 60ch; line-height: 1.5; }
+.muted { color: var(--cp-text-muted); }
+.accent { color: var(--cp-accent); }
+ul.clean { list-style: none; display: grid; gap: 12px; margin-top: 8px; }
+ul.clean li { display: flex; gap: 12px; align-items: flex-start; font-size: 17px; line-height: 1.45; }
+ul.clean li::before { content: ""; flex: 0 0 auto; width: 9px; height: 9px; margin-top: 8px; border-radius: 3px; background: var(--cp-accent); }
+
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px;
+  padding: 20px; box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+}
+.card .ic { font-size: 24px; margin-bottom: 10px; }
+.card p { color: var(--cp-text-muted); font-size: 15px; line-height: 1.45; }
+
+.stat { display: flex; flex-direction: column; gap: 4px; }
+.stat .n { font-size: clamp(28px, 3.6vw, 46px); font-weight: 800; color: var(--cp-accent); letter-spacing: -1px; }
+.stat .l { color: var(--cp-text-muted); font-size: 14px; }
+
+table.t { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.t th, table.t td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--cp-border); }
+table.t th { color: var(--cp-text-muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
+table.t tr:last-child td { border-bottom: none; }
+table.t .hl { color: var(--cp-accent); font-weight: 700; }
+.tag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--cp-accent-soft); color: var(--cp-accent); border: 1px solid var(--cp-border); }
+.tag.ok { background: rgba(22,163,74,.1); color: var(--cp-success); }
+
+/* Bar chart */
+.bars { display: grid; gap: 16px; margin-top: 10px; }
+.bar-row { display: grid; grid-template-columns: 140px 1fr auto; align-items: center; gap: 14px; }
+.bar-track { height: 30px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 8px; overflow: hidden; }
+.bar-fill { height: 100%; display: flex; align-items: center; padding-left: 12px; color: var(--cp-accent-fg); font-weight: 700; font-size: 14px; white-space: nowrap; }
+.bar-fill.cloud { background: var(--cp-border-strong); color: var(--cp-text); }
+.bar-fill.local { background: var(--cp-accent); }
+
+.two { display: grid; grid-template-columns: 1.05fr .95fr; gap: 40px; align-items: center; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 22px; } }
+
+.badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; background: var(--cp-surface); border: 1px solid var(--cp-border); font-size: 14px; font-weight: 600; }
+
+.note { margin-top: 18px; padding: 12px 16px; border-left: 3px solid var(--cp-accent); background: var(--cp-accent-soft); border-radius: 8px; font-size: 14px; color: var(--cp-text-muted); }
+.disclaimer-box { border: 1px solid var(--cp-warning); background: rgba(245,158,11,.08); border-radius: 12px; padding: 18px 20px; font-size: 15px; line-height: 1.5; }
+
+/* Nav */
+.nav { position: fixed; bottom: 18px; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: 16px; }
+.nav button {
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--cp-border);
+  background: var(--cp-panel-strong); color: var(--cp-text); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all .15s ease;
+}
+.nav button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.dots { display: flex; gap: 8px; }
+.dots span { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-border-strong); cursor: pointer; transition: all .15s ease; }
+.dots span.on { background: var(--cp-accent); transform: scale(1.25); }
+.hint { position: fixed; bottom: 22px; right: 22px; font-size: 12px; color: var(--cp-text-soft); z-index: 30; }
+.footer-credit { position: fixed; bottom: 22px; left: 22px; font-size: 12px; color: var(--cp-text-soft); z-index: 30; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> RadHarness <small>Local AI for Radiology</small></div>
+  <div class="top-right">
+    <span class="pill"><span class="g"></span> 100% ON DEVICE</span>
+    <span id="counter">1 / 12</span>
+  </div>
+</div>
+<div class="progress" id="progress" style="width:8%"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1. Title -->
+  <section class="slide active">
+    <div class="kicker">Private, on-premise AI for imaging</div>
+    <h1>RadHarness: enterprise-grade AI that never leaves the reading room.</h1>
+    <p class="lead">A complete radiology AI assistant that runs entirely on a single Mac, using open local models. No cloud, no per-study fees, no patient data leaving the building.</p>
+    <div class="badge-row">
+      <span class="badge">Worklist and DICOM viewer</span>
+      <span class="badge">Structured reporting</span>
+      <span class="badge">Critical-findings triage</span>
+      <span class="badge">Guideline RAG</span>
+      <span class="badge">Agentic assistant</span>
+    </div>
+    <div class="note">Assistant and productivity tool, not a diagnostic medical device. Every output is verified by a qualified radiologist.</div>
+  </section>
+
+  <!-- 2. Problem -->
+  <section class="slide">
+    <div class="kicker">The problem</div>
+    <h2>Cloud radiology AI is powerful, but it comes with strings attached.</h2>
+    <div class="grid g3">
+      <div class="card"><div class="ic">🔓</div><h3>PHI leaves the building</h3><p>Images and reports are uploaded to third-party clouds, expanding breach exposure and complicating HIPAA and GDPR compliance.</p></div>
+      <div class="card"><div class="ic">💸</div><h3>Recurring per-study fees</h3><p>Per-exam and per-seat subscriptions scale with volume forever. Costs never stop, and they grow as you do.</p></div>
+      <div class="card"><div class="ic">🔗</div><h3>Vendor lock-in and downtime</h3><p>Your workflow depends on someone else's uptime, pricing, and roadmap. No internet means no AI.</p></div>
+    </div>
+    <div class="note">Radiologists want the productivity of AI without surrendering control of the data or the budget.</div>
+  </section>
+
+  <!-- 3. Solution -->
+  <section class="slide">
+    <div class="kicker">The solution</div>
+    <div class="two">
+      <div>
+        <h2>One local appliance. The whole AI workflow.</h2>
+        <p class="lead">RadHarness packages a modern radiology AI stack into software that runs on a single Mac using open models. It is offline by architecture: the app refuses any non-local model endpoint.</p>
+        <ul class="clean" style="margin-top:20px">
+          <li>All inference runs on the device, on your data, under your roof.</li>
+          <li>Open-source models mean zero license and zero per-use fees.</li>
+          <li>Cross-platform: the same app runs on Mac or PC.</li>
+        </ul>
+      </div>
+      <div class="grid" style="gap:14px">
+        <div class="card stat"><span class="n">0</span><span class="l">bytes of patient data sent to any cloud</span></div>
+        <div class="card stat"><span class="n">$0</span><span class="l">per-study and per-seat inference fees</span></div>
+        <div class="card stat"><span class="n">1</span><span class="l">quiet appliance for the whole reading room</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Features -->
+  <section class="slide">
+    <div class="kicker">What it does today</div>
+    <h2>A working product, not a concept.</h2>
+    <div class="grid g3">
+      <div class="card"><div class="ic">🗂️</div><h3>Worklist and viewer</h3><p>DICOM ingest with automatic de-identification, a prioritized worklist, and an in-browser frame viewer.</p></div>
+      <div class="card"><div class="ic">📝</div><h3>Structured reporting</h3><p>Drafts Technique, Comparison, Findings, and Impression from dictation, and generates concise impressions.</p></div>
+      <div class="card"><div class="ic">🚨</div><h3>Critical-findings triage</h3><p>Detects actionable findings in report text and auto-escalates the study to STAT, with negation handling.</p></div>
+      <div class="card"><div class="ic">📚</div><h3>Guideline RAG</h3><p>Ingest your protocols and appropriateness criteria, then get grounded answers with source citations.</p></div>
+      <div class="card"><div class="ic">🤖</div><h3>Agentic assistant</h3><p>A tool-using chat agent that searches the worklist and knowledge base and runs triage on demand.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Privacy guard</h3><p>Offline mode is enforced in code. Local-only SQLite storage and an audit log keep everything on device.</p></div>
+    </div>
+    <div class="note">Verified end to end on this build: DICOM frames render, triage escalates to STAT, and the agent cites local protocols. 6 of 6 smoke tests pass.</div>
+  </section>
+
+  <!-- 5. Architecture -->
+  <section class="slide">
+    <div class="kicker">How it works</div>
+    <h2>A clean local stack, offline by design.</h2>
+    <div class="two">
+      <ul class="clean">
+        <li><strong>Local model runtime:</strong> Ollama or Foundry Local, serving an open model over a loopback endpoint only.</li>
+        <li><strong>FastAPI backend:</strong> worklist, reporting, triage, RAG, and the agent, all in Python.</li>
+        <li><strong>Local storage:</strong> SQLite plus local files, gitignored, holding studies, reports, and the knowledge base.</li>
+        <li><strong>No-build web UI:</strong> a self-contained single-page app, no external assets, no internet required.</li>
+      </ul>
+      <div class="card">
+        <h3 class="accent">Data flow</h3>
+        <p style="margin-top:10px; line-height:1.7">
+          DICOM in &rarr; de-identify &rarr; worklist<br>
+          Dictation &rarr; local model &rarr; structured report<br>
+          Report text &rarr; triage &rarr; STAT flag<br>
+          Question &rarr; local RAG &rarr; cited answer<br>
+          <span class="muted">Every arrow stays inside the device.</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Why local -->
+  <section class="slide">
+    <div class="kicker">Why local wins</div>
+    <h2>Privacy, cost, and control in one decision.</h2>
+    <div class="grid g4">
+      <div class="card"><div class="ic">🛡️</div><h3>Compliance</h3><p>No cloud egress shrinks your breach surface and simplifies HIPAA and GDPR posture.</p></div>
+      <div class="card"><div class="ic">📉</div><h3>Economics</h3><p>A one-time hardware cost replaces recurring per-study fees that never end.</p></div>
+      <div class="card"><div class="ic">⚡</div><h3>Availability</h3><p>Works with no internet. No dependency on a vendor's uptime or pricing changes.</p></div>
+      <div class="card"><div class="ic">🧩</div><h3>Control</h3><p>Own the models, the data, and the roadmap. Swap models freely as open models improve.</p></div>
+    </div>
+  </section>
+
+  <!-- 7. Recommended model (DATA) -->
+  <section class="slide" id="slide-model">
+    <div class="kicker">The model, picked and tested</div>
+    <h2>Recommended local model: <span class="accent" id="model-name">Qwen3-32B + MedGemma</span></h2>
+    <div class="two">
+      <div>
+        <p class="lead" id="model-rationale">Qwen3-32B is the primary reasoning model: Apache 2.0 licensed, with a thinking mode that suits impression drafting and structured reports. MedGemma 27B adds medical language and chest-X-ray-trained image understanding under Google's healthcare-friendly HAI-DEF terms.</p>
+        <ul class="clean" style="margin-top:18px" id="model-points">
+          <li><strong>Reasoning:</strong> Qwen3-32B (Apache 2.0, thinking mode) for reports, triage, and RAG.</li>
+          <li><strong>Medical + images:</strong> MedGemma 27B multimodal, trained on chest X-rays and clinical text.</li>
+          <li><strong>Runs on 32GB today:</strong> Qwen3-14B or gpt-oss:20b, paired with MedGemma 4B.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="accent">Model shortlist</h3>
+        <table class="t" style="margin-top:8px" id="model-table">
+          <tr><th>Model</th><th>Role</th><th>~Q4 memory</th></tr>
+          <tr><td class="hl">Qwen3-32B</td><td>Primary reasoning</td><td>~20 GB</td></tr>
+          <tr><td class="hl">MedGemma 27B</td><td>Medical text + vision</td><td>~17 GB</td></tr>
+          <tr><td>Qwen3-14B / gpt-oss:20b</td><td>Runs on 32GB now</td><td>~9 to 16 GB</td></tr>
+          <tr><td>Qwen3-72B / Llama 3.3-70B</td><td>Higher quality (128GB)</td><td>~43 to 45 GB</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="note" id="model-note">All picks allow commercial and clinical-adjacent use (Apache 2.0 and Google HAI-DEF). Medical-tuned models still hallucinate and require radiologist verification, so a strong reasoner plus grounded RAG is the safe default.</div>
+  </section>
+
+  <!-- 8. Benchmark (DATA) -->
+  <section class="slide" id="slide-bench">
+    <div class="kicker">Tested on real hardware</div>
+    <h2>Measured performance, not marketing.</h2>
+    <p class="lead">Benchmarked on an Apple M1 Max, 32GB, using the same prompts the app uses. gpt-oss:20b ran 100% on the GPU at 33 to 41 generation tokens per second, using about 12GB. A Mac Studio adds memory and bandwidth for larger models and higher throughput.</p>
+    <div class="card" style="margin-top:18px">
+      <table class="t" id="bench-table">
+        <tr><th>Task</th><th>Model</th><th>Gen tokens/sec</th><th>Latency</th><th>Quality (1-5)</th></tr>
+        <tr><td>Report drafting</td><td class="hl">gpt-oss:20b</td><td id="b-gen-a">33.3</td><td id="b-lat-a">11.7 s</td><td id="b-q-a">5</td></tr>
+        <tr><td>Triage classify</td><td>gpt-oss:20b</td><td id="b-gen-b">32.9</td><td id="b-lat-b">25.2 s</td><td id="b-q-b">3</td></tr>
+        <tr><td>RAG answer</td><td>gpt-oss:20b</td><td id="b-gen-c">41.0</td><td id="b-lat-c">3.6 s</td><td id="b-q-c">5</td></tr>
+      </table>
+    </div>
+    <div class="note" id="bench-note">Strong on report drafting and grounded answering. Triage scored lower because the model undercalled one case, which is exactly why RadHarness wraps triage in deterministic rules plus mandatory radiologist verification. Warm-run figures, GPU (Metal).</div>
+  </section>
+
+  <!-- 9. Hardware (DATA) -->
+  <section class="slide" id="slide-hw">
+    <div class="kicker">The appliance</div>
+    <h2>Recommended build: <span class="accent" id="hw-name">Mac Studio M4 Max, 128GB</span></h2>
+    <div class="grid g3" id="hw-cards">
+      <div class="card"><span class="tag">Good</span><h3 style="margin-top:10px" id="hw-good-name">M4 Max, 64GB</h3><p id="hw-good-desc">Runs a 32B reasoning model plus a medical vision model at 30 to 37 tok/s.</p><div class="stat" style="margin-top:12px"><span class="n" id="hw-good-price">$3,799</span><span class="l" id="hw-good-spec">64GB unified, 40-core GPU, 1TB</span></div></div>
+      <div class="card" style="border-color:var(--cp-accent)"><span class="tag">Recommended</span><h3 style="margin-top:10px" id="hw-better-name">M4 Max, 128GB</h3><p id="hw-better-desc">Runs a 70B model plus vision plus a summarizer at once, with headroom.</p><div class="stat" style="margin-top:12px"><span class="n" id="hw-better-price">~$5,099</span><span class="l" id="hw-better-spec">128GB unified, 40-core GPU, 2TB</span></div></div>
+      <div class="card"><span class="tag">Best</span><h3 style="margin-top:10px" id="hw-best-name">M3 Ultra, 96GB</h3><p id="hw-best-desc">819 GB/s bandwidth, about 50% faster on 70B models. High-volume rooms.</p><div class="stat" style="margin-top:12px"><span class="n" id="hw-best-price">$7,299</span><span class="l" id="hw-best-spec">96GB unified, 80-core GPU, 2TB</span></div></div>
+    </div>
+    <div class="note" id="hw-note">Rule of thumb: usable local model size must fit in unified memory, and memory bandwidth drives tokens per second. Prices are US, July 2026, and reflect the 2026 memory-shortage market. Verify at apple.com before purchase.</div>
+  </section>
+
+  <!-- 10. ROI (DATA) -->
+  <section class="slide" id="slide-roi">
+    <div class="kicker">The economics</div>
+    <h2>One-time hardware beats forever fees.</h2>
+    <div class="two">
+      <div>
+        <h3 class="muted" style="margin-bottom:14px">3-year total cost (illustrative)</h3>
+        <div class="bars">
+          <div class="bar-row"><span>Cloud / SaaS AI</span><div class="bar-track"><div class="bar-fill cloud" style="width:100%">$80,000</div></div><span></span></div>
+          <div class="bar-row"><span>RadHarness local</span><div class="bar-track"><div class="bar-fill local" style="width:16%"></div></div><span style="font-weight:800;color:var(--cp-accent)">$12,200</span></div>
+        </div>
+        <div class="note" id="roi-note">Base scenario: 8,000 studies per year, single-radiologist practice. 3-year cost about $12,200 local vs about $80,000 mid-range cloud or SaaS, plus roughly $28,700 per year in radiologist time saved. Estimates with assumptions and sources in the ROI report.</div>
+      </div>
+      <div class="grid" style="gap:14px">
+        <div class="card stat"><span class="n" id="roi-headline-1">85%</span><span class="l" id="roi-headline-1-l">lower 3-year cost vs cloud</span></div>
+        <div class="card stat"><span class="n" id="roi-headline-2">2-9 mo</span><span class="l" id="roi-headline-2-l">payback period</span></div>
+        <div class="card stat"><span class="n" id="roi-headline-3">$28.7K</span><span class="l" id="roi-headline-3-l">radiologist time saved / year</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. Roadmap -->
+  <section class="slide">
+    <div class="kicker">Where this goes</div>
+    <h2>From assistant to a full local imaging platform.</h2>
+    <div class="grid g3">
+      <div class="card"><span class="tag ok">Shipped</span><h3 style="margin-top:10px">Core harness</h3><p>Worklist, viewer, reporting, triage, RAG, and the agent, running fully local.</p></div>
+      <div class="card"><span class="tag">Next</span><h3 style="margin-top:10px">Vision and PACS</h3><p>Add a local vision model for image understanding and DICOM network integration with the reading environment.</p></div>
+      <div class="card"><span class="tag">Later</span><h3 style="margin-top:10px">Validation and scale</h3><p>Clinical validation studies, multi-user support, and a hardened on-prem deployment.</p></div>
+    </div>
+  </section>
+
+  <!-- 12. CTA / Disclaimer -->
+  <section class="slide">
+    <div class="kicker">Take it for a read</div>
+    <h1>Own your AI. Keep your data. Cut the bill.</h1>
+    <p class="lead">RadHarness is built and running today. The next step is choosing the model tier and the Mac Studio that fit your volume, then piloting it on a live worklist.</p>
+    <div class="badge-row">
+      <span class="badge">Run: <span class="mono">./run.sh</span></span>
+      <span class="badge">Open: <span class="mono">127.0.0.1:8000</span></span>
+      <span class="badge">Offline and private</span>
+    </div>
+    <div class="disclaimer-box" style="margin-top:26px">
+      <strong>Medical disclaimer.</strong> RadHarness is a research and productivity assistant, not a medical device. It is not FDA or CE cleared and must not be used for primary diagnosis or autonomous clinical decisions. All AI output must be reviewed and verified by a qualified radiologist.
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prev" aria-label="Previous">&larr;</button>
+  <div class="dots" id="dots"></div>
+  <button id="next" aria-label="Next">&rarr;</button>
+</div>
+<div class="hint">Use arrow keys to navigate</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const dotsWrap = document.getElementById("dots");
+  const counter = document.getElementById("counter");
+  const progress = document.getElementById("progress");
+  let i = 0;
+  slides.forEach((_, idx) => {
+    const s = document.createElement("span");
+    if (idx === 0) s.className = "on";
+    s.addEventListener("click", () => go(idx));
+    dotsWrap.appendChild(s);
+  });
+  const dots = Array.from(dotsWrap.children);
+  function go(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+    dots.forEach((d, idx) => d.classList.toggle("on", idx === i));
+    counter.textContent = (i + 1) + " / " + slides.length;
+    progress.style.width = ((i + 1) / slides.length * 100) + "%";
+  }
+  document.getElementById("prev").addEventListener("click", () => go(i - 1));
+  document.getElementById("next").addEventListener("click", () => go(i + 1));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); go(i + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(i - 1); }
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(slides.length - 1);
+  });
+  go(0);
+</script>
+</body>
+</html>

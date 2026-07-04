@@ -1,0 +1,14 @@
+# local data (never committed - contains potential PHI)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# os
+.DS_Store

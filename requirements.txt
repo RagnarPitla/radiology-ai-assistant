@@ -1,0 +1,10 @@
+# RadHarness backend dependencies (all local, no cloud SDKs)
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+python-multipart
+pydicom
+numpy
+Pillow
+pypdf

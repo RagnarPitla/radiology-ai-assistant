@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RadHarness</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>RadHarness</h1>
+        <p>Local-first radiology AI harness</p>
+      </div>
+    </div>
+    <div class="status-area">
+      <span id="offline-pill" class="pill muted">Checking local runtime</span>
+      <span id="runtime-line" class="runtime-line">Runtime pending</span>
+      <span class="privacy-line">All studies, reports, chat, and knowledge stay on this device.</span>
+    </div>
+  </header>
+
+  <section id="disclaimer-banner" class="disclaimer hidden" aria-live="polite">
+    <div>
+      <strong>Medical disclaimer</strong>
+      <p id="disclaimer-text"></p>
+    </div>
+    <button id="dismiss-disclaimer" class="ghost small" type="button">Dismiss</button>
+  </section>
+
+  <main class="app-shell">
+    <aside class="panel worklist-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Worklist</h2>
+          <p id="worklist-count">No studies loaded</p>
+        </div>
+        <button id="ingest-sample" type="button">Load sample</button>
+      </div>
+      <label class="upload-drop">
+        <span>Upload DICOM</span>
+        <input id="dicom-upload" type="file" accept=".dcm,application/dicom" multiple>
+      </label>
+      <div class="chips" id="filter-chips" aria-label="Worklist filters">
+        <button class="chip active" type="button" data-filter="all">All</button>
+        <button class="chip" type="button" data-filter="critical">Critical</button>
+        <button class="chip" type="button" data-filter="stat">STAT</button>
+        <button class="chip" type="button" data-filter="urgent">Urgent</button>
+        <button class="chip" type="button" data-filter="unread">Unread</button>
+        <button class="chip" type="button" data-filter="in_progress">In progress</button>
+        <button class="chip" type="button" data-filter="reported">Reported</button>
+      </div>
+      <div class="sort-row">
+        <label for="sort-select">Sort</label>
+        <select id="sort-select">
+          <option value="priority">Priority</option>
+          <option value="date">Study date</option>
+          <option value="status">Status</option>
+          <option value="modality">Modality</option>
+        </select>
+      </div>
+      <div id="worklist" class="worklist empty-state">Load sample studies or upload local DICOM files.</div>
+    </aside>
+
+    <section class="center-stack">
+      <section class="panel viewer-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Viewer</h2>
+            <p id="study-subtitle">Select a study to view frames.</p>
+          </div>
+          <div id="selected-badges" class="badge-row"></div>
+        </div>
+        <div class="viewer-layout">
+          <div class="image-stage" id="image-stage">
+            <div class="empty-state">No study selected.</div>
+          </div>
+          <dl id="study-meta" class="meta-grid"></dl>
+        </div>
+        <div class="frame-controls">
+          <button id="prev-frame" type="button" disabled>Previous</button>
+          <input id="frame-slider" type="range" min="0" max="0" value="0" disabled>
+          <button id="next-frame" type="button" disabled>Next</button>
+          <span id="frame-label">Frame 0 of 0</span>
+        </div>
+      </section>
+
+      <section class="panel report-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Report</h2>
+            <p>Structured editor with local AI assistance.</p>
+          </div>
+          <div id="triage-result" class="triage-inline"></div>
+        </div>
+        <div class="report-grid">
+          <label>Indication<textarea id="indication" rows="2" placeholder="Reason for exam"></textarea></label>
+          <label>Technique<textarea id="technique" rows="2" placeholder="Acquisition technique"></textarea></label>
+          <label>Comparison<textarea id="comparison" rows="2" placeholder="Prior exams"></textarea></label>
+          <label class="wide">Findings<textarea id="findings" rows="7" placeholder="Dictate or paste findings"></textarea></label>
+          <label class="wide">Impression<textarea id="impression" rows="5" placeholder="AI-generated or radiologist-edited impression"></textarea></label>
+        </div>
+        <div class="action-row">
+          <button id="draft-report" type="button">Draft report</button>
+          <button id="generate-impression" type="button">Generate impression</button>
+          <button id="save-report" type="button">Save</button>
+          <button id="run-triage" type="button">Run triage on report</button>
+        </div>
+        <p id="report-disclaimer" class="ai-disclaimer hidden"></p>
+        <div id="report-note" class="inline-note hidden"></div>
+      </section>
+    </section>
+
+    <aside class="panel assistant-panel">
+      <div class="tabs">
+        <button class="tab active" type="button" data-tab="assistant">Assistant</button>
+        <button class="tab" type="button" data-tab="knowledge">Knowledge</button>
+      </div>
+
+      <section id="assistant-tab" class="tab-panel">
+        <div id="chat-log" class="chat-log empty-state">Ask the local assistant about the selected study, reporting, or protocols.</div>
+        <form id="chat-form" class="chat-form">
+          <textarea id="chat-input" rows="3" placeholder="Ask a local question"></textarea>
+          <button type="submit">Send</button>
+        </form>
+        <p id="chat-disclaimer" class="ai-disclaimer hidden"></p>
+      </section>
+
+      <section id="knowledge-tab" class="tab-panel hidden">
+        <label class="upload-drop">
+          <span>Upload knowledge files</span>
+          <input id="kb-upload" type="file" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" multiple>
+        </label>
+        <div class="knowledge-search">
+          <input id="kb-query" type="search" placeholder="Search protocols or guidelines">
+          <button id="kb-search" type="button">Search</button>
+        </div>
+        <h3>Documents</h3>
+        <div id="kb-docs" class="doc-list empty-state">No knowledge documents loaded.</div>
+        <h3>Search results</h3>
+        <div id="kb-results" class="kb-results empty-state">Search results will appear here.</div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
