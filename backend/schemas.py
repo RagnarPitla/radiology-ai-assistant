@@ -30,6 +30,8 @@ class ConfigOut(BaseModel):
     chat_model: str
     fast_model: str
     embed_model: str
+    vision_model: str = ""
+    vision_available: bool = False
     offline_mode: bool
     disclaimer: str
     models_available: list[str] = Field(default_factory=list)
@@ -188,3 +190,82 @@ class ChatResponse(BaseModel):
     tool_calls: list[ToolCallTrace] = Field(default_factory=list)
     model: str = ""
     disclaimer: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Image analysis / vision (bounding boxes)
+# ---------------------------------------------------------------------------
+class BoundingBox(BaseModel):
+    # Normalized coordinates in [0, 1], origin top-left.
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 0.0
+    h: float = 0.0
+
+
+class AnalysisFinding(BaseModel):
+    id: Optional[int] = None
+    index: int = 0
+    label: str = ""
+    description: str = ""
+    severity: str = "normal"          # normal | minor | moderate | critical
+    box: BoundingBox = Field(default_factory=BoundingBox)
+
+
+class ImageUploadResponse(BaseModel):
+    study_id: int
+    image_url: str
+    width: int = 0
+    height: int = 0
+    message: str = ""
+
+
+class AnalysisRequest(BaseModel):
+    study_id: int
+    focus: str = ""                   # optional clinical question / focus
+    model: Optional[str] = None
+
+
+class AnalysisResult(BaseModel):
+    study_id: int
+    summary: str = ""
+    detail: str = ""                  # utmost-detail narrative review
+    findings: list[AnalysisFinding] = Field(default_factory=list)
+    image_url: str = ""
+    width: int = 0
+    height: int = 0
+    model: str = ""
+    disclaimer: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Knowledge base: URLs, folder ingest, generated skills
+# ---------------------------------------------------------------------------
+class IngestFolderRequest(BaseModel):
+    path: str
+
+
+class IngestUrlRequest(BaseModel):
+    urls: list[str] = Field(default_factory=list)
+
+
+class KBUrl(BaseModel):
+    id: int
+    url: str
+    title: str = ""
+    status: str = "pending"           # pending | indexed | error
+    created_at: str = ""
+
+
+class GeneratedSkill(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str = ""
+    source_doc_id: Optional[int] = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class SkillsListResponse(BaseModel):
+    skills: list[GeneratedSkill] = Field(default_factory=list)

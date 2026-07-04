@@ -78,6 +78,26 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "list_skills",
+            "description": "List generated local knowledge skills with names and descriptions.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "use_skill",
+            "description": "Load a generated local skill markdown by slug.",
+            "parameters": {
+                "type": "object",
+                "properties": {"slug": {"type": "string"}},
+                "required": ["slug"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_triage",
             "description": "Analyze report or findings text for critical/urgent findings.",
             "parameters": {
@@ -166,6 +186,34 @@ def _tool_search_knowledge(query: str, top_k: int = 5, **_: Any) -> str:
     return json.dumps(items, default=str) if items else "No relevant knowledge found."
 
 
+def _tool_list_skills(**_: Any) -> str:
+    try:
+        from backend.services import skills_service
+        skills = skills_service.list_skills()
+    except Exception as exc:
+        return f"Skills not available: {exc}"
+    items = []
+    for skill in skills:
+        d = skill.model_dump() if hasattr(skill, "model_dump") else dict(skill)
+        items.append({
+            "name": d.get("name"),
+            "slug": d.get("slug"),
+            "description": d.get("description"),
+        })
+    return json.dumps(items, default=str) if items else "No generated skills found."
+
+
+def _tool_use_skill(slug: str, **_: Any) -> str:
+    try:
+        from backend.services import skills_service
+        skill = skills_service.get_skill(slug)
+        return skill.get("markdown") or "Skill is empty."
+    except KeyError:
+        return f"No skill with slug {slug}."
+    except Exception as exc:
+        return f"Skill not available: {exc}"
+
+
 def _tool_run_triage(text: str, modality: str = "", **_: Any) -> str:
     try:
         from backend.services import triage_service
@@ -190,6 +238,8 @@ _DISPATCH = {
     "search_worklist": _tool_search_worklist,
     "get_study_details": _tool_get_study,
     "search_knowledge": _tool_search_knowledge,
+    "list_skills": _tool_list_skills,
+    "use_skill": _tool_use_skill,
     "run_triage": _tool_run_triage,
     "generate_impression": _tool_generate_impression,
 }

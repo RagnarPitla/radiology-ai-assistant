@@ -22,10 +22,15 @@ DATA_DIR = Path(os.getenv("RADIOLOGY_AI_DATA_DIR", BASE_DIR / "data"))
 DICOM_DIR = Path(os.getenv("RADIOLOGY_AI_DICOM_DIR", DATA_DIR / "dicom"))
 KB_DIR = Path(os.getenv("RADIOLOGY_AI_KB_DIR", DATA_DIR / "kb"))
 FRAMES_DIR = Path(os.getenv("RADIOLOGY_AI_FRAMES_DIR", DATA_DIR / "frames"))
+IMAGES_DIR = Path(os.getenv("RADIOLOGY_AI_IMAGES_DIR", DATA_DIR / "images"))
+KB_PROCESSED_DIR = Path(os.getenv("RADIOLOGY_AI_KB_PROCESSED_DIR", DATA_DIR / "kb_processed"))
+AGENTS_DIR = Path(os.getenv("RADIOLOGY_AI_AGENTS_DIR", DATA_DIR / "agents"))
+SKILLS_DIR = Path(os.getenv("RADIOLOGY_AI_SKILLS_DIR", DATA_DIR / "skills"))
 DB_PATH = Path(os.getenv("RADIOLOGY_AI_DB_PATH", DATA_DIR / "radharness.db"))
 FRONTEND_DIR = Path(os.getenv("RADIOLOGY_AI_FRONTEND_DIR", BASE_DIR / "frontend"))
 
-for _d in (DATA_DIR, DICOM_DIR, KB_DIR, FRAMES_DIR):
+for _d in (DATA_DIR, DICOM_DIR, KB_DIR, FRAMES_DIR, IMAGES_DIR,
+           KB_PROCESSED_DIR, AGENTS_DIR, SKILLS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -44,6 +49,8 @@ FAST_MODEL = os.getenv("RADIOLOGY_AI_FAST_MODEL", "qwen2.5-coder:1.5b")
 # Embedding model for RAG. If unavailable, the client falls back to a local
 # deterministic hashing embedding so knowledge search still works offline.
 EMBED_MODEL = os.getenv("RADIOLOGY_AI_EMBED_MODEL", "nomic-embed-text")
+# Vision-language model for image analysis and bounding-box grounding.
+VISION_MODEL = os.getenv("RADIOLOGY_AI_VISION_MODEL", "qwen2.5vl:7b")
 
 # Generation defaults
 DEFAULT_TEMPERATURE = float(os.getenv("RADIOLOGY_AI_TEMPERATURE", "0.2"))

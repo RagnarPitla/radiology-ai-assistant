@@ -54,6 +54,7 @@ def health() -> HealthOut:
 
 @app.get("/api/config", response_model=ConfigOut)
 def get_config() -> ConfigOut:
+    models = client.list_models()
     return ConfigOut(
         app=config.APP_NAME,
         version=config.APP_VERSION,
@@ -61,9 +62,11 @@ def get_config() -> ConfigOut:
         chat_model=config.CHAT_MODEL,
         fast_model=config.FAST_MODEL,
         embed_model=config.EMBED_MODEL,
+        vision_model=config.VISION_MODEL,
+        vision_available=config.VISION_MODEL in models,
         offline_mode=config.OFFLINE_MODE,
         disclaimer=config.DISCLAIMER,
-        models_available=client.list_models(),
+        models_available=models,
     )
 
 
@@ -89,6 +92,8 @@ _include("backend.routers.reports", "/api/reports", "reports")
 _include("backend.routers.knowledge", "/api/knowledge", "knowledge")
 _include("backend.routers.triage", "/api/triage", "triage")
 _include("backend.routers.chat", "/api/chat", "chat")
+_include("backend.routers.analysis", "/api/analysis", "analysis")
+_include("backend.routers.skills", "/api/skills", "skills")
 
 
 # ---------------------------------------------------------------------------

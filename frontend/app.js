@@ -2,21 +2,26 @@
   "use strict";
 
   const state = {
+    config: null,
+    health: null,
     studies: [],
     selectedStudy: null,
-    currentReport: null,
+    selectedStudyId: null,
+    selectedImageUrl: "",
     frameIndex: 0,
     filter: "all",
     sort: "priority",
+    analysis: null,
+    activeFinding: null,
     chatHistory: [],
-    config: null,
-    health: null
+    skills: []
   };
 
   const priorityRank = { stat: 0, urgent: 1, routine: 2 };
   const els = {};
 
   document.addEventListener("DOMContentLoaded", init);
+  window.addEventListener("resize", () => window.requestAnimationFrame(positionBoxes));
 
   function init() {
     bindElements();
@@ -26,16 +31,17 @@
 
   function bindElements() {
     [
-      "offline-pill", "runtime-line", "disclaimer-banner", "disclaimer-text",
-      "dismiss-disclaimer", "ingest-sample", "dicom-upload", "filter-chips",
-      "sort-select", "worklist", "worklist-count", "study-subtitle",
-      "selected-badges", "image-stage", "study-meta", "prev-frame",
-      "next-frame", "frame-slider", "frame-label", "indication", "technique",
-      "comparison", "findings", "impression", "draft-report",
-      "generate-impression", "save-report", "run-triage", "triage-result",
-      "report-disclaimer", "report-note", "chat-log", "chat-form",
-      "chat-input", "chat-disclaimer", "kb-upload", "kb-query", "kb-search",
-      "kb-docs", "kb-results", "toast-region"
+      "app-name", "runtime-line", "offline-pill", "vision-pill", "top-disclaimer",
+      "refresh-studies", "load-sample", "dicom-upload", "image-import", "filter-chips",
+      "sort-select", "worklist", "worklist-count", "run-analysis", "study-subtitle",
+      "image-stage", "study-meta", "finding-count", "analysis-findings", "analysis-detail",
+      "prev-frame", "next-frame", "frame-slider", "frame-label", "indication", "technique",
+      "comparison", "findings", "impression", "draft-report", "generate-impression",
+      "save-report", "run-triage", "triage-result", "report-disclaimer", "report-note",
+      "chat-log", "chat-form", "chat-input", "chat-disclaimer", "kb-folder",
+      "kb-ingest-folder", "kb-urls", "kb-ingest-url", "kb-upload", "kb-url-list",
+      "kb-docs", "kb-query", "kb-search", "kb-results", "skills-regenerate",
+      "skills-list", "skill-detail", "toast-region"
     ].forEach((id) => {
       els[toKey(id)] = document.getElementById(id);
     });
@@ -46,16 +52,13 @@
   }
 
   function bindEvents() {
-    els.dismissDisclaimer.addEventListener("click", () => {
-      els.disclaimerBanner.classList.add("hidden");
-    });
-    els.ingestSample.addEventListener("click", () => withBusy(els.ingestSample, ingestSample));
-    els.dicomUpload.addEventListener("change", () => uploadFiles(els.dicomUpload, "/api/studies/ingest-upload", refreshStudies));
+    els.refreshStudies.addEventListener("click", () => withBusy(els.refreshStudies, refreshStudies));
+    els.loadSample.addEventListener("click", () => withBusy(els.loadSample, loadSample));
+    els.dicomUpload.addEventListener("change", () => uploadDicom());
+    els.imageImport.addEventListener("change", () => importImage());
     els.filterChips.addEventListener("click", onFilterClick);
-    els.sortSelect.addEventListener("change", () => {
-      state.sort = els.sortSelect.value;
-      renderWorklist();
-    });
+    els.sortSelect.addEventListener("change", () => { state.sort = els.sortSelect.value; renderWorklist(); });
+    els.runAnalysis.addEventListener("click", () => withBusy(els.runAnalysis, runAnalysis));
     els.prevFrame.addEventListener("click", () => showFrame(state.frameIndex - 1));
     els.nextFrame.addEventListener("click", () => showFrame(state.frameIndex + 1));
     els.frameSlider.addEventListener("input", () => showFrame(Number(els.frameSlider.value)));
@@ -64,14 +67,18 @@
     els.saveReport.addEventListener("click", () => withBusy(els.saveReport, saveReport));
     els.runTriage.addEventListener("click", () => withBusy(els.runTriage, runTriage));
     els.chatForm.addEventListener("submit", sendChat);
-    els.kbUpload.addEventListener("change", () => uploadFiles(els.kbUpload, "/api/knowledge/ingest-upload", loadKnowledgeDocs));
+    els.kbIngestFolder.addEventListener("click", () => withBusy(els.kbIngestFolder, ingestFolder));
+    els.kbIngestUrl.addEventListener("click", () => withBusy(els.kbIngestUrl, ingestUrls));
+    els.kbUpload.addEventListener("change", () => uploadKnowledge());
     els.kbSearch.addEventListener("click", () => withBusy(els.kbSearch, searchKnowledge));
+    els.skillsRegenerate.addEventListener("click", () => withBusy(els.skillsRegenerate, regenerateSkills));
     document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", switchTab));
   }
 
   async function loadStartup() {
-    await Promise.all([loadHealth(), loadConfig()]);
-    await Promise.all([refreshStudies(), loadKnowledgeDocs()]);
+    await Promise.all([loadConfig(), loadHealth()]);
+    renderDisclaimers();
+    await Promise.all([refreshStudies(), refreshKnowledge(), loadSkills()]);
   }
 
   async function api(path, options) {
@@ -86,12 +93,12 @@
     } catch (error) {
       throw new Error("Local endpoint is not reachable.");
     }
-    if (response.status === 404) {
+    if (response.status === 404 || response.status === 503) {
       throw new Error("Not available yet.");
     }
     if (!response.ok) {
-      const message = await response.text().catch(() => "");
-      throw new Error(message || `Request failed with status ${response.status}.`);
+      const text = await response.text().catch(() => "");
+      throw new Error(text || `Request failed with status ${response.status}.`);
     }
     if (response.status === 204) {
       return null;
@@ -99,104 +106,111 @@
     return response.json();
   }
 
-  async function loadHealth() {
-    try {
-      state.health = await api("/api/health");
-      const health = state.health;
-      const isLocal = Boolean(health.offline_mode);
-      els.offlinePill.className = `pill ${isLocal ? "local" : "warn"}`;
-      setText(els.offlinePill, isLocal ? "LOCAL / OFFLINE" : "LOCAL MODE UNKNOWN");
-      const modelText = health.model || state.config?.chat_model || "model pending";
-      setText(els.runtimeLine, `${health.runtime || "runtime"} | ${modelText} | LLM ${health.llm_available ? "ready" : "not ready"}`);
-    } catch (error) {
-      els.offlinePill.className = "pill error";
-      setText(els.offlinePill, "LOCAL CHECK FAILED");
-      setText(els.runtimeLine, error.message);
-      toast(error.message);
-    }
-  }
-
   async function loadConfig() {
     try {
       state.config = await api("/api/config");
-      if (state.config.disclaimer) {
-        setText(els.disclaimerText, state.config.disclaimer);
-        setText(els.reportDisclaimer, state.config.disclaimer);
-        setText(els.chatDisclaimer, state.config.disclaimer);
-        els.disclaimerBanner.classList.remove("hidden");
-      }
-      if (state.health) {
-        await loadHealth();
-      }
+      setText(els.appName, state.config.app || "Radiology AI Assistant");
     } catch (error) {
-      showInline(els.reportNote, "Configuration is not available yet.");
+      note(els.topDisclaimer, "Configuration not available yet. Verify all AI output.");
     }
   }
 
-  async function refreshStudies(reloadSelected) {
-    const shouldReloadSelected = reloadSelected !== false;
+  async function loadHealth() {
+    try {
+      state.health = await api("/api/health");
+    } catch (error) {
+      state.health = null;
+      els.offlinePill.className = "pill error";
+      setText(els.offlinePill, "LOCAL CHECK FAILED");
+      setText(els.runtimeLine, error.message);
+      return;
+    }
+    renderHealth();
+  }
+
+  function renderHealth() {
+    const health = state.health || {};
+    const cfg = state.config || {};
+    els.offlinePill.className = health.offline_mode === false ? "pill warn" : "pill";
+    setText(els.offlinePill, health.offline_mode === false ? "LOCAL MODE UNKNOWN" : "LOCAL / OFFLINE");
+    els.visionPill.className = cfg.vision_available ? "pill" : "pill muted";
+    setText(els.visionPill, `Vision ${cfg.vision_available ? "ready" : "not ready"}`);
+    setText(els.runtimeLine, `${health.runtime || cfg.runtime || "runtime pending"} | LLM ${health.llm_available ? "ready" : "not ready"} | Vision ${cfg.vision_model || "pending"}`);
+  }
+
+  function renderDisclaimers() {
+    const disclaimer = state.config?.disclaimer || "AI output is for clinical decision support only. A qualified clinician must verify all findings.";
+    setText(els.topDisclaimer, disclaimer);
+    setText(els.reportDisclaimer, disclaimer);
+    setText(els.chatDisclaimer, disclaimer);
+    renderHealth();
+  }
+
+  async function refreshStudies() {
     try {
       state.studies = await api("/api/studies/");
-      if (state.selectedStudy && !shouldReloadSelected) {
-        const found = state.studies.find((study) => study.id === state.selectedStudy.id);
-        if (found) {
-          state.selectedStudy = { ...state.selectedStudy, ...found };
-          renderStudy();
-        }
-      }
       renderWorklist();
-      if (state.selectedStudy && shouldReloadSelected) {
-        const found = state.studies.find((study) => study.id === state.selectedStudy.id);
-        if (found) {
-          await selectStudy(found.id, false);
-        }
+      if (state.selectedStudyId && state.studies.some((study) => study.id === state.selectedStudyId)) {
+        await selectStudy(state.selectedStudyId, true);
       }
     } catch (error) {
       state.studies = [];
-      renderWorklist();
-      setText(els.worklist, endpointNote(error));
-      els.worklist.classList.add("empty-state");
-      toast(endpointNote(error));
+      renderWorklist(endpointNote(error, "Studies API"));
     }
   }
 
-  async function ingestSample() {
+  async function loadSample() {
     try {
-      const result = await api("/api/studies/ingest", {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-      toast(result.message || "Ingest complete.");
+      const result = await api("/api/studies/ingest", { method: "POST", body: JSON.stringify({}) });
+      toast(result?.message || "Sample ingest complete.");
       await refreshStudies();
     } catch (error) {
-      toast(endpointNote(error));
+      toast(endpointNote(error, "Sample ingest"));
     }
   }
 
-  async function uploadFiles(input, endpoint, callback) {
-    if (!input.files.length) {
-      return;
-    }
+  async function uploadDicom() {
+    if (!els.dicomUpload.files.length) return;
     const form = new FormData();
-    Array.from(input.files).forEach((file) => form.append("files", file));
-    input.closest(".upload-drop")?.classList.add("loading");
-    try {
-      const result = await api(endpoint, { method: "POST", body: form });
-      toast(result.message || "Upload complete.");
-      await callback();
-    } catch (error) {
-      toast(endpointNote(error));
-    } finally {
-      input.value = "";
-      input.closest(".upload-drop")?.classList.remove("loading");
-    }
+    Array.from(els.dicomUpload.files).forEach((file) => form.append("files", file));
+    await withBusy(els.dicomUpload.closest(".file-button"), async () => {
+      try {
+        const result = await api("/api/studies/ingest-upload", { method: "POST", body: form });
+        toast(result?.message || "DICOM upload complete.");
+        await refreshStudies();
+      } catch (error) {
+        toast(endpointNote(error, "DICOM upload"));
+      } finally {
+        els.dicomUpload.value = "";
+      }
+    });
+  }
+
+  async function importImage() {
+    if (!els.imageImport.files.length) return;
+    const form = new FormData();
+    form.append("file", els.imageImport.files[0]);
+    await withBusy(els.imageImport.closest(".file-button"), async () => {
+      try {
+        const result = await api("/api/analysis/upload-image", { method: "POST", body: form });
+        state.selectedStudyId = result.study_id;
+        state.selectedStudy = { id: result.study_id, modality: "IMG", description: "Imported image", frame_count: 1 };
+        state.selectedImageUrl = result.image_url || `/api/analysis/image/${encodeURIComponent(result.study_id)}.png`;
+        state.analysis = null;
+        renderSelection();
+        await loadPersistedAnalysis(result.study_id);
+        await refreshStudies();
+      } catch (error) {
+        toast(endpointNote(error, "Image import"));
+      } finally {
+        els.imageImport.value = "";
+      }
+    });
   }
 
   function onFilterClick(event) {
     const button = event.target.closest("[data-filter]");
-    if (!button) {
-      return;
-    }
+    if (!button) return;
     state.filter = button.dataset.filter;
     els.filterChips.querySelectorAll(".chip").forEach((chip) => chip.classList.toggle("active", chip === button));
     renderWorklist();
@@ -204,310 +218,336 @@
 
   function filteredStudies() {
     return state.studies.filter((study) => {
-      if (state.filter === "all") {
-        return true;
-      }
-      if (state.filter === "critical") {
-        return Boolean(study.critical);
-      }
-      if (["stat", "urgent", "routine"].includes(state.filter)) {
-        return study.priority === state.filter;
-      }
+      if (state.filter === "all") return true;
+      if (state.filter === "critical") return Boolean(study.critical);
+      if (["stat", "urgent", "routine"].includes(state.filter)) return study.priority === state.filter;
       return study.status === state.filter;
     }).sort((a, b) => {
-      if (state.sort === "priority") {
-        return (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) || dateValue(b) - dateValue(a);
-      }
-      if (state.sort === "date") {
-        return dateValue(b) - dateValue(a);
-      }
+      if (state.sort === "priority") return (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) || dateValue(b) - dateValue(a);
+      if (state.sort === "date") return dateValue(b) - dateValue(a);
       return String(a[state.sort] || "").localeCompare(String(b[state.sort] || ""));
     });
   }
 
-  function renderWorklist() {
+  function renderWorklist(message) {
     clear(els.worklist);
     const studies = filteredStudies();
     setText(els.worklistCount, `${studies.length} of ${state.studies.length} studies`);
-    if (!studies.length) {
+    if (message || !studies.length) {
       els.worklist.classList.add("empty-state");
-      setText(els.worklist, state.studies.length ? "No studies match the current filter." : "Load sample studies or upload local DICOM files.");
+      setText(els.worklist, message || (state.studies.length ? "No studies match this filter." : "Load studies, upload DICOM, or import a PNG/JPG."));
       return;
     }
     els.worklist.classList.remove("empty-state");
     studies.forEach((study) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "study-card";
-      if (state.selectedStudy?.id === study.id) {
-        button.classList.add("selected");
-      }
-      button.addEventListener("click", () => selectStudy(study.id, true));
-      const name = document.createElement("strong");
-      setText(name, study.patient_name || "Anonymous patient");
-      const lineOne = div("study-line", [study.patient_id, study.modality, study.body_part].filter(Boolean).join(" | "));
-      const lineTwo = div("study-line", [study.description, formatDate(study.study_date), `${study.num_images || 0} images`].filter(Boolean).join(" | "));
-      const badges = div("badge-row");
-      badges.appendChild(badge(study.priority || "routine", study.priority || "routine"));
-      badges.appendChild(badge("status", statusLabel(study.status)));
-      if (study.critical) {
-        badges.appendChild(badge("critical", "Critical"));
-      }
-      button.append(name, lineOne, lineTwo, badges);
-      els.worklist.appendChild(button);
+      const card = el("button", { className: `study-card${study.id === state.selectedStudyId ? " active" : ""}`, type: "button" });
+      card.addEventListener("click", () => selectStudy(study.id));
+      const titleRow = el("div", { className: "study-title-row" });
+      titleRow.append(el("strong", {}, study.patient_name || study.id || "Unknown"), badge(study.priority || "routine", study.priority || "routine"));
+      const metaRow = el("div", { className: "study-meta-row" }, `${study.modality || "MOD"} | ${study.body_part || "Body part"}`, String(study.study_date || ""));
+      const desc = el("div", { className: "study-desc" }, study.description || `${study.num_images || 0} images`);
+      const statusRow = el("div", { className: "badge-row" });
+      statusRow.append(badge(study.status || "unread", "status"));
+      if (study.critical) statusRow.append(badge("critical", "critical"));
+      card.append(titleRow, metaRow, desc, statusRow);
+      els.worklist.append(card);
     });
   }
 
-  async function selectStudy(id, showToast) {
+  async function selectStudy(id, quiet) {
+    state.selectedStudyId = id;
+    state.frameIndex = 0;
+    state.analysis = null;
+    state.activeFinding = null;
     try {
-      const detail = await api(`/api/studies/${encodeURIComponent(id)}`);
-      state.selectedStudy = detail;
-      state.frameIndex = 0;
-      clear(els.triageResult);
-      renderStudy();
-      await loadReport(id);
-      if (showToast) {
-        toast("Study loaded.");
-      }
+      state.selectedStudy = await api(`/api/studies/${encodeURIComponent(id)}`);
     } catch (error) {
-      toast(endpointNote(error));
+      state.selectedStudy = state.studies.find((study) => study.id === id) || { id };
+      if (!quiet) toast(endpointNote(error, "Study detail"));
     }
+    state.selectedImageUrl = "";
+    renderSelection();
+    await Promise.all([loadReport(id), loadPersistedAnalysis(id)]);
+    renderWorklist();
   }
 
-  function renderStudy() {
+  function renderSelection() {
     const study = state.selectedStudy;
     if (!study) {
+      setText(els.studySubtitle, "Select a study or import an image.");
+      renderImageEmpty("No image selected.");
+      renderMeta(null);
       return;
     }
-    setText(els.studySubtitle, [study.patient_name, study.modality, study.body_part, formatDate(study.study_date)].filter(Boolean).join(" | "));
-    clear(els.selectedBadges);
-    els.selectedBadges.appendChild(badge(study.priority || "routine", study.priority || "routine"));
-    els.selectedBadges.appendChild(badge("status", statusLabel(study.status)));
-    if (study.critical) {
-      els.selectedBadges.appendChild(badge("critical", "Critical"));
-    }
+    const frameCount = Number(study.frame_count || study.num_images || 1);
+    setText(els.studySubtitle, `${study.patient_name || study.id} | ${study.modality || "IMG"} | ${study.description || study.body_part || "Selected study"}`);
     renderMeta(study);
-    setupFrames(study);
+    if (state.selectedImageUrl) {
+      showImage(state.selectedImageUrl);
+    } else {
+      showFrame(Math.min(state.frameIndex, Math.max(frameCount - 1, 0)));
+    }
+    els.runAnalysis.disabled = !state.selectedStudyId;
   }
 
   function renderMeta(study) {
     clear(els.studyMeta);
-    const rows = {
-      "Patient ID": study.patient_id,
-      "Study UID": study.study_uid,
-      "Description": study.description,
-      "Body part": study.body_part,
-      "Modality": study.modality,
-      "Frames": study.frame_count,
-      "Status": statusLabel(study.status)
-    };
-    Object.entries(rows).forEach(([key, value]) => {
-      const dt = document.createElement("dt");
-      const dd = document.createElement("dd");
-      setText(dt, key);
-      setText(dd, value == null || value === "" ? "Not recorded" : String(value));
-      els.studyMeta.append(dt, dd);
+    if (!study) return;
+    const rows = [
+      ["Study", study.id], ["Patient", study.patient_name], ["Modality", study.modality],
+      ["Body part", study.body_part], ["Priority", study.priority], ["Status", study.status],
+      ["Frames", study.frame_count || study.num_images || 1]
+    ];
+    rows.forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      els.studyMeta.append(el("dt", {}, key), el("dd", {}, String(value)));
     });
-  }
-
-  function setupFrames(study) {
-    const count = Number(study.frame_count || 0);
-    els.frameSlider.max = Math.max(0, count - 1);
-    els.frameSlider.disabled = count <= 1;
-    els.prevFrame.disabled = count <= 1;
-    els.nextFrame.disabled = count <= 1;
-    if (!count) {
-      clear(els.imageStage);
-      els.imageStage.appendChild(div("empty-state", "No renderable images for this study."));
-      setText(els.frameLabel, "Frame 0 of 0");
-      return;
-    }
-    showFrame(0);
   }
 
   function showFrame(index) {
     const study = state.selectedStudy;
-    if (!study) {
-      return;
-    }
-    const count = Number(study.frame_count || 0);
-    if (!count) {
-      return;
-    }
+    if (!study?.id) return;
+    const count = Math.max(Number(study.frame_count || study.num_images || 1), 1);
     state.frameIndex = Math.min(Math.max(index, 0), count - 1);
-    els.frameSlider.value = state.frameIndex;
-    els.prevFrame.disabled = state.frameIndex === 0;
-    els.nextFrame.disabled = state.frameIndex === count - 1;
+    state.selectedImageUrl = `/api/studies/${encodeURIComponent(study.id)}/frame/${state.frameIndex}.png`;
+    showImage(state.selectedImageUrl);
+    els.frameSlider.disabled = count <= 1;
+    els.prevFrame.disabled = state.frameIndex <= 0;
+    els.nextFrame.disabled = state.frameIndex >= count - 1;
+    els.frameSlider.max = String(count - 1);
+    els.frameSlider.value = String(state.frameIndex);
     setText(els.frameLabel, `Frame ${state.frameIndex + 1} of ${count}`);
-    clear(els.imageStage);
-    const img = document.createElement("img");
-    img.alt = `DICOM frame ${state.frameIndex + 1}`;
-    img.src = `/api/studies/${encodeURIComponent(study.id)}/frame/${state.frameIndex}.png`;
-    img.addEventListener("error", () => {
-      clear(els.imageStage);
-      els.imageStage.appendChild(div("empty-state", "This frame is not available yet."));
-    });
-    els.imageStage.appendChild(img);
   }
 
-  async function loadReport(studyId) {
-    clearReportNote();
-    state.currentReport = null;
-    els.indication.value = "";
-    setReportFields({});
+  function showImage(src) {
+    clear(els.imageStage);
+    const img = el("img", { className: "viewer-image", alt: "Selected radiology image" });
+    img.addEventListener("load", positionBoxes);
+    img.addEventListener("error", () => renderImageEmpty("Image could not be loaded."));
+    img.src = src;
+    const layer = el("div", { className: "box-layer", id: "box-layer" });
+    els.imageStage.append(img, layer);
+    renderAnalysis();
+  }
+
+  function renderImageEmpty(text) {
+    clear(els.imageStage);
+    els.imageStage.append(el("div", { className: "empty-state" }, text));
+  }
+
+  async function loadPersistedAnalysis(id) {
+    if (!id) return;
     try {
-      const report = await api(`/api/reports/${encodeURIComponent(studyId)}`);
-      state.currentReport = report;
-      setReportFields(report);
-      showAiDisclaimer(report.disclaimer);
+      state.analysis = await api(`/api/analysis/${encodeURIComponent(id)}`);
+      if (state.analysis?.image_url) state.selectedImageUrl = state.analysis.image_url;
+      if (state.analysis?.image_url) showImage(state.selectedImageUrl);
+      renderAnalysis();
+      applyAnalysisToFindings(false);
     } catch (error) {
-      if (error.message !== "Not available yet.") {
-        showInline(els.reportNote, "No saved report for this study yet.");
-      } else {
-        showInline(els.reportNote, "Report service is not available yet.");
-      }
+      state.analysis = null;
+      renderAnalysis(endpointNote(error, "Analysis"));
     }
   }
 
-  function setReportFields(report) {
-    els.technique.value = report.technique || "";
-    els.comparison.value = report.comparison || "";
-    els.findings.value = report.findings || "";
-    els.impression.value = report.impression || "";
+  async function runAnalysis() {
+    if (!state.selectedStudyId) {
+      toast("Select or import a study first.");
+      return;
+    }
+    try {
+      state.analysis = await api("/api/analysis/run", {
+        method: "POST",
+        body: JSON.stringify({ study_id: state.selectedStudyId, focus: "radiology findings with verifiable bounding boxes" })
+      });
+      state.selectedImageUrl = state.analysis.image_url || state.selectedImageUrl || `/api/analysis/image/${encodeURIComponent(state.selectedStudyId)}.png`;
+      showImage(state.selectedImageUrl);
+      renderAnalysis();
+      applyAnalysisToFindings(true);
+      toast("Analysis complete.");
+    } catch (error) {
+      renderAnalysis(endpointNote(error, "Analysis"));
+      toast(endpointNote(error, "Analysis"));
+    }
+  }
+
+  function renderAnalysis(message) {
+    clear(els.analysisFindings);
+    const findings = Array.isArray(state.analysis?.findings) ? state.analysis.findings : [];
+    setText(els.findingCount, String(findings.length));
+    if (message || !findings.length) {
+      els.analysisFindings.classList.add("empty-state");
+      setText(els.analysisFindings, message || "Run analysis to show finding boxes.");
+    } else {
+      els.analysisFindings.classList.remove("empty-state");
+      findings.forEach((finding, idx) => {
+        const number = idx + 1;
+        const item = el("button", { className: `finding-item sev-${severity(finding)}`, type: "button", dataset: { index: String(idx) } });
+        item.addEventListener("mouseenter", () => activateFinding(idx));
+        item.addEventListener("focus", () => activateFinding(idx));
+        item.addEventListener("click", () => activateFinding(idx));
+        const head = el("div", { className: "finding-item-head" });
+        head.append(el("strong", {}, `${number}. ${finding.label || "Finding"}`), severityChip(severity(finding)));
+        item.append(head, el("div", {}, finding.description || "No description."));
+        els.analysisFindings.append(item);
+      });
+    }
+    setText(els.analysisDetail, state.analysis?.detail || state.analysis?.summary || "No analysis detail yet.");
+    els.analysisDetail.classList.toggle("empty-state", !state.analysis?.detail && !state.analysis?.summary);
+    positionBoxes();
+  }
+
+  function positionBoxes() {
+    const layer = document.getElementById("box-layer");
+    const img = els.imageStage.querySelector(".viewer-image");
+    if (!layer || !img || !img.complete || !img.naturalWidth) return;
+    const stageRect = els.imageStage.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    layer.style.left = `${imgRect.left - stageRect.left}px`;
+    layer.style.top = `${imgRect.top - stageRect.top}px`;
+    layer.style.width = `${imgRect.width}px`;
+    layer.style.height = `${imgRect.height}px`;
+    clear(layer);
+    const findings = Array.isArray(state.analysis?.findings) ? state.analysis.findings : [];
+    findings.forEach((finding, idx) => {
+      if (!finding.box) return;
+      const box = finding.box;
+      const div = el("button", {
+        className: `finding-box sev-${severity(finding)}${state.activeFinding === idx ? " active" : ""}`,
+        type: "button",
+        dataset: { index: String(idx), label: `${idx + 1}. ${finding.label || "Finding"}` }
+      });
+      div.style.left = `${clamp01(box.x) * imgRect.width}px`;
+      div.style.top = `${clamp01(box.y) * imgRect.height}px`;
+      div.style.width = `${clamp01(box.w) * imgRect.width}px`;
+      div.style.height = `${clamp01(box.h) * imgRect.height}px`;
+      div.addEventListener("mouseenter", () => activateFinding(idx));
+      div.addEventListener("focus", () => activateFinding(idx));
+      div.addEventListener("click", () => activateFinding(idx));
+      layer.append(div);
+    });
+  }
+
+  function activateFinding(idx) {
+    state.activeFinding = idx;
+    document.querySelectorAll(".finding-item").forEach((item) => item.classList.toggle("active", Number(item.dataset.index) === idx));
+    document.querySelectorAll(".finding-box").forEach((box) => box.classList.toggle("active", Number(box.dataset.index) === idx));
+  }
+
+  function applyAnalysisToFindings(force) {
+    const findings = Array.isArray(state.analysis?.findings) ? state.analysis.findings : [];
+    if (!findings.length || (!force && els.findings.value.trim())) return;
+    els.findings.value = findings.map((finding, idx) => `[Box ${idx + 1}] ${finding.label || "Finding"}: ${finding.description || ""}`).join("\n");
+  }
+
+  async function loadReport(id) {
+    try {
+      const report = await api(`/api/reports/${encodeURIComponent(id)}`);
+      if (report) fillReport(report);
+    } catch (error) {
+      hide(els.reportNote);
+    }
+  }
+
+  function reportPayload() {
+    const study = state.selectedStudy || {};
+    return {
+      study_id: state.selectedStudyId || study.id || "",
+      modality: study.modality || "",
+      body_part: study.body_part || "",
+      indication: els.indication.value.trim(),
+      findings: els.findings.value.trim(),
+      comparison: els.comparison.value.trim(),
+      technique: els.technique.value.trim(),
+      style: "concise radiology report",
+      impression: els.impression.value.trim(),
+      disclaimer: state.config?.disclaimer || ""
+    };
   }
 
   async function draftReport() {
-    const study = requireStudy();
-    if (!study) {
-      return;
+    if (!state.selectedStudyId) return toast("Select a study first.");
+    try {
+      const report = await api("/api/reports/draft", { method: "POST", body: JSON.stringify(reportPayload()) });
+      fillReport(report);
+      keepAnalysisVisible();
+      showInline(els.reportNote, "Draft generated. Verify each finding against visible boxes before signing.");
+    } catch (error) {
+      showInline(els.reportNote, endpointNote(error, "Draft report"));
     }
-    clearReportNote();
-    const report = await api("/api/reports/draft", {
-      method: "POST",
-      body: JSON.stringify({
-        study_id: study.id,
-        modality: study.modality || "",
-        body_part: study.body_part || "",
-        indication: els.indication.value,
-        findings: els.findings.value,
-        comparison: els.comparison.value,
-        technique: els.technique.value,
-        style: "concise clinical radiology"
-      })
-    });
-    state.currentReport = report;
-    setReportFields(report);
-    showAiDisclaimer(report.disclaimer);
-    showInline(els.reportNote, "Draft report generated locally. Review before clinical use.");
   }
 
   async function generateImpression() {
-    const study = requireStudy();
-    if (!study) {
-      return;
+    try {
+      const result = await api("/api/reports/impression", { method: "POST", body: JSON.stringify(reportPayload()) });
+      els.impression.value = result.impression || "";
+      keepAnalysisVisible();
+    } catch (error) {
+      showInline(els.reportNote, endpointNote(error, "Generate impression"));
     }
-    clearReportNote();
-    const result = await api("/api/reports/impression", {
-      method: "POST",
-      body: JSON.stringify({
-        findings: els.findings.value,
-        indication: els.indication.value,
-        modality: study.modality || ""
-      })
-    });
-    els.impression.value = result.impression || "";
-    showAiDisclaimer(result.disclaimer);
-    showInline(els.reportNote, "Impression generated locally. Review before saving.");
   }
 
   async function saveReport() {
-    const study = requireStudy();
-    if (!study) {
-      return;
+    try {
+      const saved = await api("/api/reports/save", { method: "POST", body: JSON.stringify(reportPayload()) });
+      fillReport(saved);
+      toast("Report saved locally.");
+    } catch (error) {
+      showInline(els.reportNote, endpointNote(error, "Save report"));
     }
-    clearReportNote();
-    const report = {
-      ...(state.currentReport || {}),
-      study_id: study.id,
-      technique: els.technique.value,
-      comparison: els.comparison.value,
-      findings: els.findings.value,
-      impression: els.impression.value,
-      status: "draft",
-      model: state.currentReport?.model || state.config?.chat_model || "",
-      disclaimer: state.currentReport?.disclaimer || state.config?.disclaimer || ""
-    };
-    const saved = await api("/api/reports/save", {
-      method: "POST",
-      body: JSON.stringify(report)
-    });
-    state.currentReport = saved;
-    showAiDisclaimer(saved.disclaimer);
-    showInline(els.reportNote, "Report saved.");
   }
 
   async function runTriage() {
-    const study = requireStudy();
-    if (!study) {
-      return;
+    try {
+      const text = [els.findings.value, els.impression.value].filter(Boolean).join("\n\n");
+      const result = await api("/api/triage/analyze", { method: "POST", body: JSON.stringify({ text, study_id: state.selectedStudyId }) });
+      clear(els.triageResult);
+      els.triageResult.append(badge(result.level || "triage", result.critical ? "critical" : "status"));
+      showInline(els.reportNote, result.rationale || "Triage complete.");
+    } catch (error) {
+      showInline(els.reportNote, endpointNote(error, "Triage"));
     }
-    const text = `${els.findings.value}\n${els.impression.value}`.trim();
-    if (!text) {
-      toast("Add findings or impression text before triage.");
-      return;
-    }
-    const result = await api("/api/triage/analyze", {
-      method: "POST",
-      body: JSON.stringify({ text, study_id: study.id, modality: study.modality || "" })
-    });
-    renderTriage(result);
-    showAiDisclaimer(result.disclaimer);
-    await refreshStudies(false);
   }
 
-  function renderTriage(result) {
-    clear(els.triageResult);
-    els.triageResult.appendChild(badge(result.level || "routine", result.level || "routine"));
-    if (result.critical) {
-      els.triageResult.appendChild(badge("critical", "Critical"));
-    }
-    const rationale = document.createElement("div");
-    setText(rationale, result.rationale || "No rationale returned.");
-    els.triageResult.appendChild(rationale);
+  function fillReport(report) {
+    if (report.technique !== undefined) els.technique.value = report.technique || "";
+    if (report.comparison !== undefined) els.comparison.value = report.comparison || "";
+    if (report.findings !== undefined) els.findings.value = withBoxReferences(report.findings || "");
+    if (report.impression !== undefined) els.impression.value = report.impression || "";
+    if (report.disclaimer) setText(els.reportDisclaimer, report.disclaimer);
+  }
+
+  function withBoxReferences(text) {
+    const findings = Array.isArray(state.analysis?.findings) ? state.analysis.findings : [];
+    if (!findings.length || text.includes("[Box")) return text;
+    return `${text}\n\nVerification boxes:\n${findings.map((finding, idx) => `[Box ${idx + 1}] ${finding.label || "Finding"}`).join("\n")}`;
+  }
+
+  function keepAnalysisVisible() {
+    if (state.analysis) renderAnalysis();
   }
 
   async function sendChat(event) {
     event.preventDefault();
     const message = els.chatInput.value.trim();
-    if (!message) {
-      return;
-    }
+    if (!message) return;
     els.chatInput.value = "";
     appendChat("user", message);
+    const history = state.chatHistory.slice(-12);
     state.chatHistory.push({ role: "user", content: message });
-    els.chatForm.classList.add("loading");
-    try {
-      const result = await api("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          message,
-          history: state.chatHistory.slice(0, -1),
-          study_id: state.selectedStudy?.id,
-          use_tools: true
-        })
-      });
-      appendChat("assistant", result.reply || "", result.tool_calls || []);
-      state.chatHistory.push({ role: "assistant", content: result.reply || "" });
-      if (result.disclaimer || state.config?.disclaimer) {
-        setText(els.chatDisclaimer, result.disclaimer || state.config.disclaimer);
-        els.chatDisclaimer.classList.remove("hidden");
+    await withBusy(els.chatForm.querySelector("button"), async () => {
+      try {
+        const result = await api("/api/chat", {
+          method: "POST",
+          body: JSON.stringify({ message, history, study_id: state.selectedStudyId, use_tools: true })
+        });
+        const reply = result.reply || "No reply.";
+        appendChat("assistant", reply, result.tool_calls || []);
+        state.chatHistory.push({ role: "assistant", content: reply });
+        if (result.disclaimer) setText(els.chatDisclaimer, result.disclaimer);
+      } catch (error) {
+        appendChat("assistant", endpointNote(error, "Chat"));
       }
-    } catch (error) {
-      appendChat("assistant", endpointNote(error));
-      toast(endpointNote(error));
-    } finally {
-      els.chatForm.classList.remove("loading");
-    }
+    });
   }
 
   function appendChat(role, content, tools) {
@@ -515,220 +555,276 @@
       clear(els.chatLog);
       els.chatLog.classList.remove("empty-state");
     }
-    const message = div(`message ${role}`);
-    const roleLabel = document.createElement("span");
-    roleLabel.className = "role";
-    setText(roleLabel, role);
-    const body = document.createElement("span");
-    setText(body, content);
-    message.append(roleLabel, body);
-    if (tools && tools.length) {
-      const toolLine = div("tools-line");
-      setText(toolLine, `Tools used: ${tools.map((tool) => `${tool.name}: ${tool.result_summary || "done"}`).join(" | ")}`);
-      message.appendChild(toolLine);
+    const msg = el("div", { className: `chat-message ${role}` });
+    msg.append(el("strong", {}, role), el("div", { className: "chat-bubble" }, content));
+    if (tools?.length) {
+      msg.append(el("div", { className: "tools-line" }, `Tools used: ${tools.map((tool) => tool.name || "tool").join(", ")}`));
     }
-    els.chatLog.appendChild(message);
+    els.chatLog.append(msg);
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
   }
 
-  function switchTab(event) {
-    const target = event.currentTarget.dataset.tab;
-    document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === target));
-    document.getElementById("assistant-tab").classList.toggle("hidden", target !== "assistant");
-    document.getElementById("knowledge-tab").classList.toggle("hidden", target !== "knowledge");
+  async function refreshKnowledge() {
+    await Promise.all([loadKnowledgeUrls(), loadKnowledgeDocs()]);
+  }
+
+  async function ingestFolder() {
+    const path = els.kbFolder.value.trim();
+    if (!path) return toast("Enter a folder path.");
+    try {
+      await api("/api/knowledge/ingest-folder", { method: "POST", body: JSON.stringify({ path }) });
+      toast("Folder indexing started.");
+      await loadKnowledgeDocs();
+    } catch (error) {
+      toast(endpointNote(error, "Folder ingest"));
+    }
+  }
+
+  async function ingestUrls() {
+    const urls = els.kbUrls.value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
+    if (!urls.length) return toast("Enter at least one URL.");
+    try {
+      await api("/api/knowledge/ingest-url", { method: "POST", body: JSON.stringify({ urls }) });
+      els.kbUrls.value = "";
+      toast("URL indexing started.");
+      await loadKnowledgeUrls();
+    } catch (error) {
+      toast(endpointNote(error, "URL ingest"));
+    }
+  }
+
+  async function uploadKnowledge() {
+    if (!els.kbUpload.files.length) return;
+    const form = new FormData();
+    Array.from(els.kbUpload.files).forEach((file) => form.append("files", file));
+    await withBusy(els.kbUpload.closest(".file-button"), async () => {
+      try {
+        await api("/api/knowledge/ingest-upload", { method: "POST", body: form });
+        toast("Knowledge upload complete.");
+        await loadKnowledgeDocs();
+      } catch (error) {
+        toast(endpointNote(error, "Knowledge upload"));
+      } finally {
+        els.kbUpload.value = "";
+      }
+    });
+  }
+
+  async function loadKnowledgeUrls() {
+    try {
+      const urls = await api("/api/knowledge/urls");
+      renderRows(els.kbUrlList, urls, "No URLs indexed.", (item) => item.title || item.url || item.id, (item) => item.status || item.url, () => deleteKnowledgeUrl);
+    } catch (error) {
+      renderEmpty(els.kbUrlList, endpointNote(error, "Knowledge URLs"));
+    }
   }
 
   async function loadKnowledgeDocs() {
     try {
       const docs = await api("/api/knowledge/docs");
-      renderDocs(docs);
+      renderRows(els.kbDocs, docs, "No knowledge documents loaded.", (item) => item.title || item.name || item.id, (item) => item.source || item.status || "indexed", () => deleteKnowledgeDoc);
     } catch (error) {
-      clear(els.kbDocs);
-      els.kbDocs.classList.add("empty-state");
-      setText(els.kbDocs, "Knowledge service is not available yet.");
+      renderEmpty(els.kbDocs, endpointNote(error, "Knowledge docs"));
     }
   }
 
-  function renderDocs(docs) {
-    clear(els.kbDocs);
-    if (!docs.length) {
-      els.kbDocs.classList.add("empty-state");
-      setText(els.kbDocs, "No knowledge documents loaded.");
-      return;
+  async function deleteKnowledgeUrl(id) {
+    try {
+      await api(`/api/knowledge/urls/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await loadKnowledgeUrls();
+    } catch (error) {
+      toast(endpointNote(error, "Delete URL"));
     }
-    els.kbDocs.classList.remove("empty-state");
-    docs.forEach((doc) => {
-      const item = div("doc-item");
-      const info = document.createElement("div");
-      const title = document.createElement("strong");
-      setText(title, doc.title || doc.filename || "Untitled document");
-      const meta = div("study-line", `${doc.num_chunks || 0} chunks | ${formatDate(doc.created_at)}`);
-      info.append(title, meta);
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "small ghost";
-      setText(del, "Delete");
-      del.addEventListener("click", () => deleteDoc(doc.id));
-      item.append(info, del);
-      els.kbDocs.appendChild(item);
-    });
   }
 
-  async function deleteDoc(id) {
+  async function deleteKnowledgeDoc(id) {
     try {
       await api(`/api/knowledge/docs/${encodeURIComponent(id)}`, { method: "DELETE" });
-      toast("Knowledge document deleted.");
       await loadKnowledgeDocs();
     } catch (error) {
-      toast(endpointNote(error));
+      toast(endpointNote(error, "Delete doc"));
     }
   }
 
   async function searchKnowledge() {
     const query = els.kbQuery.value.trim();
-    if (!query) {
-      toast("Enter a knowledge search query.");
-      return;
-    }
+    if (!query) return toast("Enter a search query.");
     try {
-      const result = await api("/api/knowledge/search", {
-        method: "POST",
-        body: JSON.stringify({ query, top_k: 5 })
-      });
-      renderKbHits(result.hits || []);
-    } catch (error) {
+      const result = await api("/api/knowledge/search", { method: "POST", body: JSON.stringify({ query, top_k: 5 }) });
       clear(els.kbResults);
-      els.kbResults.classList.add("empty-state");
-      setText(els.kbResults, endpointNote(error));
+      const hits = result.hits || [];
+      if (!hits.length) return renderEmpty(els.kbResults, "No hits.");
+      els.kbResults.classList.remove("empty-state");
+      hits.forEach((hit) => {
+        els.kbResults.append(el("div", { className: "hit-row" },
+          el("strong", {}, `${hit.doc_title || "Source"} | score ${formatScore(hit.score)}`),
+          el("div", {}, hit.text || "")
+        ));
+      });
+    } catch (error) {
+      renderEmpty(els.kbResults, endpointNote(error, "Knowledge search"));
     }
   }
 
-  function renderKbHits(hits) {
-    clear(els.kbResults);
-    if (!hits.length) {
-      els.kbResults.classList.add("empty-state");
-      setText(els.kbResults, "No local knowledge hits found.");
-      return;
+  async function loadSkills() {
+    try {
+      const result = await api("/api/skills");
+      state.skills = result.skills || [];
+      renderSkills();
+    } catch (error) {
+      renderEmpty(els.skillsList, endpointNote(error, "Skills"));
     }
-    els.kbResults.classList.remove("empty-state");
-    hits.forEach((hit) => {
-      const item = div("kb-hit");
-      const title = document.createElement("strong");
-      const score = typeof hit.score === "number" ? hit.score.toFixed(3) : "n/a";
-      setText(title, `${hit.doc_title || hit.doc_id || "Document"} | score ${score}`);
-      const text = document.createElement("p");
-      setText(text, hit.text || "");
-      item.append(title, text);
-      els.kbResults.appendChild(item);
+  }
+
+  async function regenerateSkills() {
+    try {
+      await api("/api/skills/regenerate", { method: "POST", body: JSON.stringify({}) });
+      toast("Skill regeneration started.");
+      await loadSkills();
+    } catch (error) {
+      toast(endpointNote(error, "Regenerate skills"));
+    }
+  }
+
+  function renderSkills() {
+    clear(els.skillsList);
+    if (!state.skills.length) return renderEmpty(els.skillsList, "No skills generated.");
+    els.skillsList.classList.remove("empty-state");
+    state.skills.forEach((skill) => {
+      const row = el("button", { className: "skill-row", type: "button" });
+      row.append(el("strong", {}, skill.name || skill.slug || "Skill"), el("span", {}, skill.description || "No description."));
+      row.addEventListener("click", () => loadSkillDetail(skill.slug));
+      els.skillsList.append(row);
     });
   }
 
-  function requireStudy() {
-    if (!state.selectedStudy) {
-      toast("Select a study first.");
-      return null;
-    }
-    return state.selectedStudy;
-  }
-
-  async function withBusy(button, fn) {
-    button.disabled = true;
-    button.classList.add("loading");
+  async function loadSkillDetail(slug) {
+    if (!slug) return;
+    setText(els.skillDetail, "Loading skill...");
     try {
-      await fn();
+      const skill = await api(`/api/skills/${encodeURIComponent(slug)}`);
+      setText(els.skillDetail, `${skill.name || slug}\n\n${skill.description || ""}\n\n${skill.markdown || ""}\n\nAgent:\n${skill.agent || "Not generated."}`);
+      els.skillDetail.classList.remove("empty-state");
     } catch (error) {
-      toast(endpointNote(error));
-    } finally {
-      button.disabled = false;
-      button.classList.remove("loading");
+      setText(els.skillDetail, endpointNote(error, "Skill detail"));
     }
   }
 
-  function showAiDisclaimer(text) {
-    const disclaimer = text || state.config?.disclaimer;
-    if (!disclaimer) {
-      return;
-    }
-    setText(els.reportDisclaimer, disclaimer);
-    els.reportDisclaimer.classList.remove("hidden");
+  function renderRows(container, rows, emptyText, titleFn, subtitleFn, deleteFnFactory) {
+    clear(container);
+    if (!Array.isArray(rows) || !rows.length) return renderEmpty(container, emptyText);
+    container.classList.remove("empty-state");
+    rows.forEach((item) => {
+      const row = el("div", { className: "doc-row" });
+      const actions = el("div", { className: "row-actions" });
+      actions.append(el("strong", {}, titleFn(item)));
+      const del = el("button", { className: "secondary delete-btn", type: "button" }, "Delete");
+      del.addEventListener("click", () => deleteFnFactory()(item.id));
+      actions.append(del);
+      row.append(actions, el("span", {}, subtitleFn(item) || ""));
+      container.append(row);
+    });
   }
 
-  function clearReportNote() {
-    els.reportNote.classList.add("hidden");
-    setText(els.reportNote, "");
+  function switchTab(event) {
+    const tab = event.target.closest(".tab");
+    if (!tab) return;
+    document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button === tab));
+    document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
+    document.getElementById(`${tab.dataset.tab}-tab`)?.classList.remove("hidden");
   }
 
-  function showInline(element, message) {
-    setText(element, message);
-    element.classList.remove("hidden");
+  function badge(text, kind) {
+    return el("span", { className: `badge ${kind || "status"}` }, text || "status");
   }
 
-  function toast(message) {
-    const node = div("toast", message);
-    els.toastRegion.appendChild(node);
-    window.setTimeout(() => node.remove(), 4200);
+  function severityChip(sev) {
+    return el("span", { className: `sev-chip sev-${sev}` }, sev);
   }
 
-  function endpointNote(error) {
-    if (error.message === "Not available yet.") {
-      return "This local endpoint is not available yet.";
-    }
-    return error.message || "Local request failed.";
+  function severity(finding) {
+    const sev = String(finding?.severity || "normal").toLowerCase();
+    return ["normal", "minor", "moderate", "critical"].includes(sev) ? sev : "normal";
   }
 
-  function badge(type, label) {
-    const node = document.createElement("span");
-    node.className = `badge ${type}`;
-    setText(node, label);
-    return node;
-  }
-
-  function div(className, text) {
-    const node = document.createElement("div");
-    if (className) {
-      node.className = className;
-    }
-    if (text != null) {
-      setText(node, text);
-    }
+  function el(tag, options, ...children) {
+    const node = document.createElement(tag);
+    const opts = options || {};
+    if (opts.className) node.className = opts.className;
+    if (opts.type) node.type = opts.type;
+    if (opts.alt) node.alt = opts.alt;
+    if (opts.id) node.id = opts.id;
+    if (opts.dataset) Object.entries(opts.dataset).forEach(([key, value]) => { node.dataset[key] = value; });
+    children.flat().forEach((child) => {
+      if (child === null || child === undefined) return;
+      node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    });
     return node;
   }
 
   function clear(node) {
-    while (node.firstChild) {
-      node.removeChild(node.firstChild);
+    node.replaceChildren();
+  }
+
+  function setText(node, text) {
+    node.textContent = text || "";
+  }
+
+  function note(node, text) {
+    setText(node, text);
+  }
+
+  function hide(node) {
+    node.classList.add("hidden");
+  }
+
+  function showInline(node, text) {
+    setText(node, text);
+    node.classList.remove("hidden");
+  }
+
+  function renderEmpty(node, text) {
+    clear(node);
+    node.classList.add("empty-state");
+    setText(node, text);
+  }
+
+  async function withBusy(target, fn) {
+    target?.classList.add("loading");
+    if (target?.tagName === "BUTTON") target.disabled = true;
+    try {
+      return await fn();
+    } finally {
+      target?.classList.remove("loading");
+      if (target?.tagName === "BUTTON") target.disabled = false;
+      if (target === els.runAnalysis && !state.selectedStudyId) target.disabled = true;
     }
   }
 
-  function setText(node, value) {
-    node.textContent = value == null ? "" : String(value);
+  function toast(message) {
+    const toastEl = el("div", { className: "toast" }, message);
+    els.toastRegion.append(toastEl);
+    window.setTimeout(() => toastEl.remove(), 4200);
   }
 
-  function formatDate(value) {
-    if (!value) {
-      return "No date";
-    }
-    const text = String(value);
-    if (/^\d{8}$/.test(text)) {
-      return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
-    }
-    const date = new Date(text);
-    if (Number.isNaN(date.getTime())) {
-      return text;
-    }
-    return date.toLocaleDateString();
+  function endpointNote(error, label) {
+    const msg = error?.message || "Request failed.";
+    return msg === "Not available yet." ? `${label} is not available yet.` : `${label}: ${msg}`;
   }
 
   function dateValue(study) {
-    const value = study.study_date || study.created_at || "";
-    if (/^\d{8}$/.test(String(value))) {
-      return Number(value);
-    }
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    const value = Date.parse(study.study_date || "");
+    return Number.isFinite(value) ? value : 0;
   }
 
-  function statusLabel(value) {
-    return String(value || "unread").replace(/_/g, " ");
+  function clamp01(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, Math.min(1, number));
+  }
+
+  function formatScore(score) {
+    const number = Number(score);
+    return Number.isFinite(number) ? number.toFixed(3) : "n/a";
   }
 }());

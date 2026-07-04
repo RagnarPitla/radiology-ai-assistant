@@ -94,13 +94,58 @@ CREATE TABLE IF NOT EXISTS audit (
     action          TEXT,
     detail          TEXT DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS analysis_findings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_id        INTEGER,
+    label           TEXT DEFAULT '',
+    description     TEXT DEFAULT '',
+    severity        TEXT DEFAULT 'normal',
+    box_json        TEXT DEFAULT '[]',
+    model           TEXT DEFAULT '',
+    created_at      TEXT,
+    FOREIGN KEY (study_id) REFERENCES studies(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS kb_urls (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT UNIQUE,
+    title           TEXT DEFAULT '',
+    status          TEXT DEFAULT 'pending',
+    doc_id          INTEGER,
+    created_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS generated_skills (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT,
+    slug            TEXT UNIQUE,
+    description     TEXT DEFAULT '',
+    source_doc_id   INTEGER,
+    skill_path      TEXT DEFAULT '',
+    agent_path      TEXT DEFAULT '',
+    created_at      TEXT,
+    updated_at      TEXT
+);
 """
+
+# Additive columns for existing installs. Each is applied best effort.
+_MIGRATIONS = [
+    "ALTER TABLE kb_docs ADD COLUMN source_type TEXT DEFAULT 'file'",
+    "ALTER TABLE kb_docs ADD COLUMN source_ref TEXT DEFAULT ''",
+    "ALTER TABLE studies ADD COLUMN source_kind TEXT DEFAULT 'dicom'",
+]
 
 
 def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                pass  # column already exists
         conn.commit()
     finally:
         conn.close()

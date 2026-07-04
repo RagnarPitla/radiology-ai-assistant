@@ -42,6 +42,23 @@ on-device assistant:
   grounded answers with citations.
 - **Agentic assistant**: a chat agent that can search the worklist, the
   knowledge base, and run triage using local tools.
+- **Image analysis with bounding boxes**: import a PNG or JPG scan and run a
+  local vision model (`qwen2.5vl`) for a detailed review. Findings are drawn as
+  labeled, severity-colored boxes over the exact location on the image so the
+  radiologist can verify each point.
+- **Knowledge base from folders and URLs**: point the app at a local folder or
+  paste a list of URLs. Content is fetched, semantically indexed, and saved as
+  Markdown for reuse.
+- **Auto-generated skills and agents**: as soon as knowledge is added, the app
+  spins up a reusable skill (Markdown) and an agent definition (JSON) for it, and
+  updates them when the knowledge changes.
+
+## Open source and license
+
+This repository is open source under the MIT License (see [LICENSE](LICENSE)).
+It is published by Rbuild.ai as a showcase of private, on-device AI. All AI
+inference runs locally on open models. Contributions and questions are welcome
+at **ragnar@rbuild.ai**.
 
 ## Requirements
 - Python 3.10+ (tested on 3.14).

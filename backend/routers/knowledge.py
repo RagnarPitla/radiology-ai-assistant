@@ -8,7 +8,15 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from backend import config
-from backend.schemas import KBDoc, KBIngestResponse, KBSearchRequest, KBSearchResponse
+from backend.schemas import (
+    IngestFolderRequest,
+    IngestUrlRequest,
+    KBDoc,
+    KBIngestResponse,
+    KBSearchRequest,
+    KBSearchResponse,
+    KBUrl,
+)
 from backend.services import rag_service
 
 router = APIRouter()
@@ -75,6 +83,42 @@ def ingest_path(body: IngestPathRequest) -> KBIngestResponse:
         ingested=docs,
         message=f"Ingested {len(docs)} document(s), skipped {skipped}.",
     )
+
+
+@router.post("/ingest-folder", response_model=KBIngestResponse)
+def ingest_folder(body: IngestFolderRequest) -> KBIngestResponse:
+    path = Path(body.path).expanduser()
+    if not path.exists() or not path.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found")
+    files = rag_service.supported_files(path)
+    if not files:
+        return KBIngestResponse(ingested=[], message="No supported files found.")
+    docs, skipped = rag_service.ingest_paths(files)
+    return KBIngestResponse(
+        ingested=docs,
+        message=f"Ingested {len(docs)} document(s), skipped {skipped}.",
+    )
+
+
+@router.post("/ingest-url", response_model=KBIngestResponse)
+def ingest_url(body: IngestUrlRequest) -> KBIngestResponse:
+    docs, skipped = rag_service.ingest_urls(body.urls)
+    return KBIngestResponse(
+        ingested=docs,
+        message=f"Indexed {len(docs)} URL(s), failed or skipped {skipped}.",
+    )
+
+
+@router.get("/urls", response_model=list[KBUrl])
+def urls() -> list[KBUrl]:
+    return rag_service.list_urls()
+
+
+@router.delete("/urls/{url_id}")
+def delete_url(url_id: int) -> dict[str, int]:
+    if not rag_service.delete_url(url_id):
+        raise HTTPException(status_code=404, detail="URL not found")
+    return {"deleted": url_id}
 
 
 @router.get("/docs", response_model=list[KBDoc])

@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import json
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
+import httpx
 import numpy as np
 from pypdf import PdfReader
 
-from backend import db
+from backend import config, db
 from backend.llm import client
 from backend.schemas import KBDoc, KBHit
 
@@ -132,12 +135,44 @@ def _doc_from_row(row) -> KBDoc:
     )
 
 
-def ingest_file(path: str | Path) -> KBDoc | None:
-    source = Path(path).expanduser()
-    if not _is_supported(source):
-        return None
+def _safe_text(text: str) -> str:
+    return (text or "").replace("\u2014", "-").replace("\u2013", "-")
 
-    text = _extract_text(source).strip()
+
+def _slugify(value: str, fallback: str = "knowledge") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+    return slug[:80].strip("-") or fallback
+
+
+def _save_processed_markdown(doc_id: int, title: str, text: str) -> Path:
+    config.KB_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    slug = _slugify(f"{doc_id}-{title}", f"doc-{doc_id}")
+    path = config.KB_PROCESSED_DIR / f"{slug}.md"
+    content = f"# {_safe_text(title)}\n\n{_safe_text(text).strip()}\n"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _post_process_doc(doc_id: int, title: str, text: str) -> None:
+    try:
+        _save_processed_markdown(doc_id, title, text)
+    except Exception as exc:
+        db.log_audit("kb_processed_error", {"doc_id": doc_id, "error": type(exc).__name__})
+    try:
+        from backend.services import skills_service
+        skills_service.generate_for_doc(doc_id, title, text)
+    except Exception as exc:
+        db.log_audit("kb_skill_error", {"doc_id": doc_id, "error": type(exc).__name__})
+
+
+def _store_doc_text(
+    filename: str,
+    title: str,
+    text: str,
+    source_type: str = "file",
+    source_ref: str = "",
+) -> KBDoc | None:
+    text = _safe_text(text).strip()
     chunks = chunk_text(text)
     if not chunks:
         db.log_audit("kb_ingest", {"docs": 0, "chunks": 0, "skipped": 1})
@@ -151,10 +186,12 @@ def ingest_file(path: str | Path) -> KBDoc | None:
     conn = db.connect()
     try:
         created_at = db.now_iso()
-        title = _title_from_text(text, source.name)
         cur = conn.execute(
-            "INSERT INTO kb_docs (filename, title, num_chunks, created_at) VALUES (?, ?, ?, ?)",
-            (source.name, title, len(chunks), created_at),
+            """
+            INSERT INTO kb_docs (filename, title, num_chunks, created_at, source_type, source_ref)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (filename, title, len(chunks), created_at, source_type, source_ref),
         )
         doc_id = int(cur.lastrowid)
         conn.executemany(
@@ -172,15 +209,152 @@ def ingest_file(path: str | Path) -> KBDoc | None:
     finally:
         conn.close()
 
-    db.log_audit("kb_ingest", {"docs": 1, "chunks": len(chunks), "skipped": 0})
-    return _doc_from_row(row) if row else None
+    db.log_audit("kb_ingest", {"docs": 1, "chunks": len(chunks), "skipped": 0, "source_type": source_type})
+    if row:
+        _post_process_doc(doc_id, title, text)
+        return _doc_from_row(row)
+    return None
+
+
+def ingest_file(path: str | Path) -> KBDoc | None:
+    source = Path(path).expanduser()
+    if not _is_supported(source):
+        return None
+    text = _extract_text(source).strip()
+    title = _title_from_text(text, source.name)
+    return _store_doc_text(source.name, title, text, "file", str(source))
 
 
 def ingest_paths(paths: Iterable[str | Path]) -> tuple[list[KBDoc], int]:
     docs: list[KBDoc] = []
     skipped = 0
     for path in paths:
-        doc = ingest_file(path)
+        try:
+            doc = ingest_file(path)
+        except Exception as exc:
+            db.log_audit("kb_ingest_error", {"path": str(path), "error": type(exc).__name__})
+            doc = None
+        if doc is None:
+            skipped += 1
+        else:
+            docs.append(doc)
+    return docs, skipped
+
+
+class _ReadableHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.skip = False
+        self.title = ""
+        self.in_title = False
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript"}:
+            self.skip = True
+        if tag == "title":
+            self.in_title = True
+        if tag in {"p", "br", "div", "section", "article", "li", "h1", "h2", "h3"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript"}:
+            self.skip = False
+        if tag == "title":
+            self.in_title = False
+        if tag in {"p", "div", "section", "article", "li", "h1", "h2", "h3"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self.skip:
+            return
+        clean = re.sub(r"\s+", " ", data).strip()
+        if not clean:
+            return
+        if self.in_title:
+            self.title = f"{self.title} {clean}".strip()
+        self.parts.append(clean)
+        self.parts.append(" ")
+
+    def text(self) -> str:
+        return re.sub(r"\n\s*\n+", "\n\n", "".join(self.parts)).strip()
+
+
+def _html_to_text(html: str) -> tuple[str, str]:
+    parser = _ReadableHTMLParser()
+    parser.feed(html or "")
+    return _safe_text(parser.title), _safe_text(parser.text())
+
+
+def _url_filename(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.netloc or "url"
+    path = parsed.path.strip("/").replace("/", "-") or "index"
+    return f"{_slugify(host)}-{_slugify(path)}.md"
+
+
+def _upsert_url(url: str, title: str, status: str, doc_id: int | None = None) -> None:
+    now = db.now_iso()
+    conn = db.connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO kb_urls (url, title, status, doc_id, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(url) DO UPDATE SET
+                title=excluded.title,
+                status=excluded.status,
+                doc_id=excluded.doc_id
+            """,
+            (url, title, status, doc_id, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _existing_url_doc_id(url: str) -> int | None:
+    conn = db.connect()
+    try:
+        row = conn.execute("SELECT doc_id FROM kb_urls WHERE url = ?", (url,)).fetchone()
+        return int(row["doc_id"]) if row and row["doc_id"] else None
+    finally:
+        conn.close()
+
+
+def ingest_url(url: str) -> KBDoc | None:
+    clean_url = (url or "").strip()
+    if not clean_url:
+        return None
+    old_doc_id = _existing_url_doc_id(clean_url)
+    try:
+        with httpx.Client(timeout=30, follow_redirects=True) as http:
+            response = http.get(clean_url, headers={"User-Agent": "Radiology-AI-Assistant/0.1"})
+            response.raise_for_status()
+        ctype = response.headers.get("content-type", "").lower()
+        if "html" in ctype or "<html" in response.text[:500].lower():
+            page_title, text = _html_to_text(response.text)
+        else:
+            page_title, text = "", response.text
+        title = page_title or _title_from_text(text, clean_url)
+        if old_doc_id:
+            delete_doc(old_doc_id)
+        doc = _store_doc_text(_url_filename(clean_url), title, text, "url", clean_url)
+        _upsert_url(clean_url, title, "indexed" if doc else "error", doc.id if doc else None)
+        return doc
+    except Exception as exc:
+        _upsert_url(clean_url, clean_url, "error", old_doc_id)
+        db.log_audit("kb_url_error", {"url": clean_url, "error": type(exc).__name__})
+        return None
+
+
+def ingest_urls(urls: Iterable[str]) -> tuple[list[KBDoc], int]:
+    docs: list[KBDoc] = []
+    skipped = 0
+    for url in urls:
+        doc = ingest_url(url)
         if doc is None:
             skipped += 1
         else:
@@ -200,9 +374,15 @@ def list_docs() -> list[KBDoc]:
 
 
 def delete_doc(doc_id: int) -> bool:
+    try:
+        from backend.services import skills_service
+        skills_service.delete_for_doc(doc_id)
+    except Exception:
+        pass
     conn = db.connect()
     try:
         cur = conn.execute("DELETE FROM kb_docs WHERE id = ?", (doc_id,))
+        conn.execute("UPDATE kb_urls SET doc_id = NULL WHERE doc_id = ?", (doc_id,))
         conn.commit()
         deleted = cur.rowcount > 0
     finally:
@@ -210,6 +390,35 @@ def delete_doc(doc_id: int) -> bool:
     if deleted:
         db.log_audit("kb_delete", {"docs": 1, "chunks": "cascade"})
     return deleted
+
+
+def list_urls():
+    from backend.schemas import KBUrl
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            "SELECT id, url, title, status, created_at FROM kb_urls ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+        return [KBUrl(id=int(r["id"]), url=r["url"] or "", title=r["title"] or "", status=r["status"] or "pending", created_at=r["created_at"] or "") for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_url(url_id: int) -> bool:
+    conn = db.connect()
+    try:
+        row = conn.execute("SELECT doc_id FROM kb_urls WHERE id = ?", (url_id,)).fetchone()
+        if not row:
+            return False
+        doc_id = int(row["doc_id"]) if row["doc_id"] else None
+        conn.execute("DELETE FROM kb_urls WHERE id = ?", (url_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    if doc_id:
+        delete_doc(doc_id)
+    db.log_audit("kb_url_delete", {"url_id": url_id, "doc_deleted": bool(doc_id)})
+    return True
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:

@@ -66,11 +66,36 @@ def _study_context(study_id: Optional[int]) -> dict[str, Any]:
     return dict(row) if row else {}
 
 
+def _analysis_context(study_id: Optional[int]) -> str:
+    if not study_id:
+        return ""
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            "SELECT label, description, severity FROM analysis_findings WHERE study_id=? ORDER BY id ASC",
+            (study_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        return ""
+    lines = ["Local vision analysis findings with bounding boxes:"]
+    for index, row in enumerate(rows, 1):
+        label = row["label"] or f"Finding {index}"
+        severity = row["severity"] or "normal"
+        description = row["description"] or ""
+        lines.append(
+            f"Finding {index} (see box {index}): {label} [{severity}]. {description}"
+        )
+    return "\n".join(lines)
+
+
 def draft_report(req: ReportDraftRequest) -> ReportOut:
     ctx = _study_context(req.study_id)
     modality = req.modality or ctx.get("modality", "")
     body_part = req.body_part or ctx.get("body_part", "")
 
+    analysis_context = _analysis_context(req.study_id)
     user = (
         f"Modality: {modality or 'Not provided'}\n"
         f"Body part: {body_part or 'Not provided'}\n"
@@ -80,6 +105,12 @@ def draft_report(req: ReportDraftRequest) -> ReportOut:
         f"Reporting style: {req.style}\n\n"
         f"Radiologist findings / dictation:\n{req.findings or 'Not provided'}\n"
     )
+    if analysis_context:
+        user += (
+            "\nInclude these local image analysis findings where supported. "
+            "Reference them as Finding N (see box N) when drafting FINDINGS and IMPRESSION.\n"
+            f"{analysis_context}\n"
+        )
 
     model = req.model or config.CHAT_MODEL
     result = {"technique": "", "comparison": "", "findings": "", "impression": ""}
